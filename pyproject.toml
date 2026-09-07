@@ -11,9 +11,14 @@ requires-python = ">=3.14.7"
 authors = [
     { name = "Mayaz Rakib", email = "mayaz@rakib.com.au" }
 ]
+dependencies = [
+    "mcp[cli]>=2.1.1",
+    "python-chess>=1.999",
+    "ruff>=0.16.6",
+]
 
 [project.scripts]
-gambit = "gambit.cli:main"
+gambit = "gambit.main:main"
 
 [tool.uv.build-backend]
 module-name = "gambit"
