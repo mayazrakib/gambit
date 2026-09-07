@@ -1,0 +1,70 @@
+# OS metadata
+.DS_Store
+Desktop.ini
+Thumbs.db
+
+# Temporary files
+*.swp
+*.tmp
+tmp/
+
+# Editor files
+.idea/
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Runtime state
+*.pid
+*.sock
+
+# Virtual environments
+.venv/
+venv/
+
+# Build artifacts
+.build/
+.dist/
+.out/
+__pycache__/
+*.pyc
+build/
+dist/
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test and coverage artifacts
+.coverage
+.pytest_cache/
+coverage/
+htmlcov/
+
+# Linting
+.mypy_cache/
+.ruff_cache/
+.pyright/
+
+# Dependencies
+node_modules/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*~

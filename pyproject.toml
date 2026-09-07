@@ -1,0 +1,25 @@
+[build-system]
+requires = ["uv_build==0.12.10"]
+build-backend = "uv_build"
+
+[project]
+name = "gambit"
+version = "0.1.0"
+description = "AI-driven chess analysis and tutoring application."
+readme = "README.md"
+requires-python = ">=3.14.7"
+authors = [
+    { name = "Mayaz Rakib", email = "mayaz@rakib.com.au" }
+]
+
+[project.scripts]
+gambit = "gambit.cli:main"
+
+[tool.uv.build-backend]
+module-name = "gambit"
+module-root = "src"
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+pythonpath = ["src", "."]
+asyncio_mode = "auto"
