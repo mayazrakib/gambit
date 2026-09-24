@@ -1,25 +1,28 @@
-from __future__ import annotations
-
 import asyncio
 import atexit
-import os
-import shutil
-import subprocess
 import sys
-import threading
-from collections import OrderedDict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from typing import Any, Literal
 
 import chess
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.stdio import stdio_server
 
-DEFAULT_NODES = 100_000
-DEFAULT_MULTIPV = 3
-MAX_NODES = 2_000_000
-MAX_MULTIPV = 5
-ENGINE_RESPONSE_TIMEOUT_SECONDS = 30
+from gambit import games
+from gambit.engine import (
+    DEFAULT_MULTIPV,
+    DEFAULT_NODES,
+    StockfishClient,
+    execute_engine_request,
+    get_evaluation,
+    get_variation,
+    parse_board,
+    parse_move,
+    validate_multipv,
+    validate_nodes,
+)
+
 Orientation = Literal["auto", "white", "black"]
 
 
@@ -78,248 +81,6 @@ class GambitMCPServer(MCPServer):
                 write_stream,
                 self._lowlevel_server.create_initialization_options(),
             )
-
-
-def get_stockfish_path() -> str:
-    configured_path = os.environ.get("STOCKFISH_PATH")
-    if configured_path:
-        return configured_path
-
-    discovered_path = shutil.which("stockfish")
-    if discovered_path:
-        return discovered_path
-
-    raise RuntimeError(
-        "Stockfish was not found. Install it or set STOCKFISH_PATH to its executable."
-    )
-
-
-@dataclass(frozen=True)
-class Evaluation:
-    centipawns: int | None
-    pawns: float | None
-    mate_in: int | None
-
-
-class StockfishClient:
-    def __init__(self) -> None:
-        self._process: subprocess.Popen[str] | None = None
-        self._lock = threading.Lock()
-        self._cache: OrderedDict[tuple[str, int, int], list[dict[str, Any]]] = (
-            OrderedDict()
-        )
-        self._multipv: int | None = None
-
-    def close(self) -> None:
-        with self._lock:
-            if self._process is None:
-                return
-
-            if self._process.stdin is not None:
-                self._process.stdin.write("quit\n")
-                self._process.stdin.flush()
-
-            self._process.terminate()
-            self._process.wait(timeout=ENGINE_RESPONSE_TIMEOUT_SECONDS)
-            self._process = None
-            self._multipv = None
-
-    def _start(self) -> None:
-        self._process = subprocess.Popen(
-            [get_stockfish_path()],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            bufsize=1,
-        )
-        self._send("uci")
-        self._read_until("uciok")
-        self._send("isready")
-        self._read_until("readyok")
-
-    def _send(self, command: str) -> None:
-        if self._process is None or self._process.stdin is None:
-            raise RuntimeError("Stockfish is not running.")
-
-        self._process.stdin.write(f"{command}\n")
-        self._process.stdin.flush()
-
-    def _read_until(self, expected_line: str) -> None:
-        if self._process is None or self._process.stdout is None:
-            raise RuntimeError("Stockfish is not running.")
-
-        while True:
-            line = self._process.stdout.readline()
-            if not line:
-                raise RuntimeError("Stockfish stopped before it became ready.")
-
-            if line.strip() == expected_line:
-                return
-
-    def analyze(
-        self,
-        board: chess.Board,
-        multipv: int,
-        nodes: int,
-    ) -> list[dict[str, Any]]:
-        with self._lock:
-            cache_key = (board.fen(), multipv, nodes)
-            if cache_key in self._cache:
-                analysis = self._cache.pop(cache_key)
-                self._cache[cache_key] = analysis
-                return analysis
-
-            if self._process is None:
-                self._start()
-
-            if multipv != self._multipv:
-                self._send(f"setoption name MultiPV value {multipv}")
-                self._multipv = multipv
-            self._send(f"position fen {board.fen()}")
-            self._send(f"go nodes {nodes}")
-
-            analysis = self._read_analysis()
-            self._cache[cache_key] = analysis
-            while len(self._cache) > 128:
-                self._cache.popitem(last=False)
-            return analysis
-
-    def _read_analysis(self) -> list[dict[str, Any]]:
-        if self._process is None or self._process.stdout is None:
-            raise RuntimeError("Stockfish is not running.")
-
-        lines_by_rank: dict[int, dict[str, Any]] = {}
-
-        while True:
-            line = self._process.stdout.readline().strip()
-            if not line:
-                raise RuntimeError("Stockfish stopped before returning an analysis.")
-
-            if line.startswith("bestmove "):
-                return [lines_by_rank[rank] for rank in sorted(lines_by_rank)]
-
-            if not line.startswith("info ") or " pv " not in line:
-                continue
-
-            tokens = line.split()
-            rank = get_uci_integer(tokens, "multipv", default=1)
-            score_index = get_uci_token_index(tokens, "score")
-            pv_index = get_uci_token_index(tokens, "pv")
-
-            if (
-                score_index is None
-                or pv_index is None
-                or score_index + 2 >= len(tokens)
-            ):
-                continue
-
-            score_type = tokens[score_index + 1]
-            score_value = int(tokens[score_index + 2])
-            lines_by_rank[rank] = {
-                "centipawns": score_value if score_type == "cp" else None,
-                "mate_in": score_value if score_type == "mate" else None,
-                "pv": [chess.Move.from_uci(move) for move in tokens[pv_index + 1 :]],
-            }
-
-
-def get_uci_token_index(tokens: list[str], token: str) -> int | None:
-    try:
-        return tokens.index(token)
-    except ValueError:
-        return None
-
-
-def get_uci_integer(tokens: list[str], token: str, default: int) -> int:
-    token_index = get_uci_token_index(tokens, token)
-    if token_index is None or token_index + 1 >= len(tokens):
-        return default
-
-    try:
-        return int(tokens[token_index + 1])
-    except ValueError:
-        return default
-
-
-def validate_nodes(nodes: int) -> int:
-    if isinstance(nodes, bool) or not isinstance(nodes, int):
-        raise TypeError("nodes must be an integer.")
-
-    if not 1 <= nodes <= MAX_NODES:
-        raise ValueError(f"nodes must be between 1 and {MAX_NODES:,}.")
-
-    return nodes
-
-
-def validate_multipv(multipv: int) -> int:
-    if isinstance(multipv, bool) or not isinstance(multipv, int):
-        raise TypeError("multipv must be an integer.")
-
-    if not 1 <= multipv <= MAX_MULTIPV:
-        raise ValueError(f"multipv must be between 1 and {MAX_MULTIPV}.")
-
-    return multipv
-
-
-def parse_board(fen: str) -> chess.Board:
-    try:
-        board = chess.Board(fen)
-    except ValueError as exception:
-        raise ValueError(
-            "fen must be a valid Forsyth-Edwards Notation position."
-        ) from exception
-
-    if not board.is_valid():
-        raise ValueError("fen does not describe a valid chess position.")
-
-    return board
-
-
-def parse_move(board: chess.Board, move_text: str) -> chess.Move:
-    try:
-        move = board.parse_san(move_text)
-    except ValueError:
-        try:
-            move = chess.Move.from_uci(move_text)
-        except ValueError as exception:
-            raise ValueError(
-                f"{move_text!r} is neither SAN nor UCI notation."
-            ) from exception
-
-    if move not in board.legal_moves:
-        raise ValueError(f"{move_text!r} is not legal in this position.")
-
-    return move
-
-
-def get_evaluation(information: dict[str, Any]) -> Evaluation:
-    mate_in = information["mate_in"]
-    if mate_in is not None:
-        return Evaluation(centipawns=None, pawns=None, mate_in=mate_in)
-
-    centipawns = information["centipawns"]
-    if centipawns is None:
-        return Evaluation(centipawns=None, pawns=None, mate_in=None)
-
-    return Evaluation(
-        centipawns=centipawns,
-        pawns=round(centipawns / 100, 2),
-        mate_in=None,
-    )
-
-
-def get_variation(board: chess.Board, moves: list[chess.Move]) -> list[dict[str, str]]:
-    variation_board = board.copy()
-    variation: list[dict[str, str]] = []
-
-    for move in moves:
-        if move not in variation_board.legal_moves:
-            break
-
-        variation.append({"san": variation_board.san(move), "uci": move.uci()})
-        variation_board.push(move)
-
-    return variation
 
 
 def get_position_summary(board: chess.Board) -> dict[str, Any]:
@@ -513,6 +274,82 @@ async def tutor_move(
     ]
 
     return result
+
+
+@mcp.tool(
+    description="Parse one standard-chess PGN without Stockfish. Plies are one-based from the supplied starting position."
+)
+async def parse_game(pgn: str) -> games.ParsedGame:
+    try:
+        return games.parse_game(pgn)
+    except ValueError as exception:
+        raise ToolError(str(exception)) from exception
+
+
+@mcp.tool(
+    description="Analyze a batch of FEN requests through one warm Stockfish process. All scores use White's perspective."
+)
+async def analyze_positions(
+    positions: list[games.PositionAnalysisRequest],
+) -> tuple[games.PositionAnalysis, ...]:
+    try:
+        return await execute_engine_request(
+            games.analyze_positions, positions, stockfish
+        )
+    except (ValueError, TypeError, RuntimeError) as exception:
+        raise ToolError(str(exception)) from exception
+
+
+@mcp.tool(
+    description="Analyze a complete standard-chess PGN with adaptive Stockfish searches. Scores use White's perspective; nodes is the configured per-position budget."
+)
+async def analyze_game(
+    pgn: str,
+    side: games.AnalysisSide = "both",
+    initial_nodes: int = 20_000,
+    critical_nodes: int = 250_000,
+    multipv: int = 3,
+    critical_loss_cp: int = 40,
+) -> games.GameAnalysis:
+    try:
+        return await execute_engine_request(
+            games.analyze_game,
+            pgn,
+            stockfish,
+            side,
+            initial_nodes,
+            critical_nodes,
+            multipv,
+            critical_loss_cp,
+        )
+    except (ValueError, TypeError, RuntimeError) as exception:
+        raise ToolError(str(exception)) from exception
+
+
+@mcp.tool(
+    description="Analyze and classify a complete PGN with deterministic Gambit review labels and per-player summaries. No prose coaching is generated."
+)
+async def review_game(
+    pgn: str,
+    side: games.AnalysisSide = "both",
+    initial_nodes: int = 20_000,
+    critical_nodes: int = 250_000,
+    multipv: int = 3,
+    critical_loss_cp: int = 40,
+) -> games.GameReview:
+    try:
+        return await execute_engine_request(
+            games.review_game,
+            pgn,
+            stockfish,
+            side,
+            initial_nodes,
+            critical_nodes,
+            multipv,
+            critical_loss_cp,
+        )
+    except (ValueError, TypeError, RuntimeError) as exception:
+        raise ToolError(str(exception)) from exception
 
 
 def main() -> None:

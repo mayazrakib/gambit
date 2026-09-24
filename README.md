@@ -13,6 +13,13 @@ screenshot or book diagram into an analyzable FEN position.
 - `analyze_position`, `inspect_position`, and `list_legal_moves`: compact,
   structured position tools.
 - `tutor_move`: validates a proposed move and returns high-quality replies.
+- `parse_game`: validates PGN and reconstructs every main-line position without
+  running Stockfish.
+- `analyze_positions`: batches FEN requests with individual node and MultiPV settings.
+- `analyze_game`: analyzes one PGN with adaptive searches, White-relative scores,
+  candidate variations, and centipawn losses.
+- `review_game`: adds deterministic move classifications, position features, and
+  player summaries in the same engine pass.
 - Lazy, reusable OCR and Stockfish processes plus bounded result caches for
   low repeated-call latency.
 
@@ -25,6 +32,9 @@ Image pixels cannot reveal whose turn it is or position history. The caller
 must supply `side_to_move`; castling is conservatively disabled unless
 `infer_castling_rights=true` is explicitly requested. En passant and move
 counters use neutral defaults.
+
+See [the whole-game API guide](docs/game-analysis.md) for request examples, score
+semantics, classification thresholds, limits, and engine reproducibility details.
 
 ## Run
 
