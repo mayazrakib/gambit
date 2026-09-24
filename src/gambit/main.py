@@ -5,18 +5,79 @@ import atexit
 import os
 import shutil
 import subprocess
+import sys
 import threading
+from collections import OrderedDict
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
 
 import chess
 from mcp.server import MCPServer
+from mcp.server.stdio import stdio_server
 
 DEFAULT_NODES = 100_000
 DEFAULT_MULTIPV = 3
 MAX_NODES = 2_000_000
 MAX_MULTIPV = 5
 ENGINE_RESPONSE_TIMEOUT_SECONDS = 30
+Orientation = Literal["auto", "white", "black"]
+
+
+class AsyncStdin:
+    """Read stdin without AnyIO's worker-thread based AsyncFile adapter."""
+
+    def __init__(self) -> None:
+        self._reader: asyncio.StreamReader | None = None
+        self._transport: asyncio.ReadTransport | None = None
+
+    def __aiter__(self) -> AsyncStdin:
+        return self
+
+    async def __anext__(self) -> str:
+        if self._reader is None:
+            self._reader = asyncio.StreamReader()
+            protocol = asyncio.StreamReaderProtocol(self._reader)
+            transport, _ = await asyncio.get_running_loop().connect_read_pipe(
+                lambda: protocol,
+                sys.stdin,
+            )
+            self._transport = transport
+
+        line = await self._reader.readline()
+        if not line:
+            raise StopAsyncIteration
+
+        return line.decode("utf-8", errors="replace")
+
+
+class AsyncStdout:
+    """Expose stdout with the small async interface expected by stdio_server."""
+
+    async def write(self, data: str) -> None:
+        sys.stdout.write(data)
+
+    async def flush(self) -> None:
+        sys.stdout.flush()
+
+
+class GambitMCPServer(MCPServer):
+    async def run_stdio_async(self) -> None:
+        if sys.platform == "win32":
+            await super().run_stdio_async()
+            return
+
+        # The default MCP stdio adapter delegates every read and write to an
+        # AnyIO worker thread. Thread completion notifications are unreliable
+        # in the Python 3.14 runtime used by Gambit, leaving every request hung.
+        async with stdio_server(
+            stdin=AsyncStdin(),  # type: ignore[arg-type]
+            stdout=AsyncStdout(),  # type: ignore[arg-type]
+        ) as (read_stream, write_stream):
+            await self._lowlevel_server.run(
+                read_stream,
+                write_stream,
+                self._lowlevel_server.create_initialization_options(),
+            )
 
 
 def get_stockfish_path() -> str:
@@ -44,6 +105,10 @@ class StockfishClient:
     def __init__(self) -> None:
         self._process: subprocess.Popen[str] | None = None
         self._lock = threading.Lock()
+        self._cache: OrderedDict[tuple[str, int, int], list[dict[str, Any]]] = (
+            OrderedDict()
+        )
+        self._multipv: int | None = None
 
     def close(self) -> None:
         with self._lock:
@@ -57,6 +122,7 @@ class StockfishClient:
             self._process.terminate()
             self._process.wait(timeout=ENGINE_RESPONSE_TIMEOUT_SECONDS)
             self._process = None
+            self._multipv = None
 
     def _start(self) -> None:
         self._process = subprocess.Popen(
@@ -98,14 +164,26 @@ class StockfishClient:
         nodes: int,
     ) -> list[dict[str, Any]]:
         with self._lock:
+            cache_key = (board.fen(), multipv, nodes)
+            if cache_key in self._cache:
+                analysis = self._cache.pop(cache_key)
+                self._cache[cache_key] = analysis
+                return analysis
+
             if self._process is None:
                 self._start()
 
-            self._send(f"setoption name MultiPV value {multipv}")
+            if multipv != self._multipv:
+                self._send(f"setoption name MultiPV value {multipv}")
+                self._multipv = multipv
             self._send(f"position fen {board.fen()}")
             self._send(f"go nodes {nodes}")
 
-            return self._read_analysis()
+            analysis = self._read_analysis()
+            self._cache[cache_key] = analysis
+            while len(self._cache) > 128:
+                self._cache.popitem(last=False)
+            return analysis
 
     def _read_analysis(self) -> list[dict[str, Any]]:
         if self._process is None or self._process.stdout is None:
@@ -129,7 +207,11 @@ class StockfishClient:
             score_index = get_uci_token_index(tokens, "score")
             pv_index = get_uci_token_index(tokens, "pv")
 
-            if score_index is None or pv_index is None or score_index + 2 >= len(tokens):
+            if (
+                score_index is None
+                or pv_index is None
+                or score_index + 2 >= len(tokens)
+            ):
                 continue
 
             score_type = tokens[score_index + 1]
@@ -137,7 +219,7 @@ class StockfishClient:
             lines_by_rank[rank] = {
                 "centipawns": score_value if score_type == "cp" else None,
                 "mate_in": score_value if score_type == "mate" else None,
-                "pv": [chess.Move.from_uci(move) for move in tokens[pv_index + 1:]],
+                "pv": [chess.Move.from_uci(move) for move in tokens[pv_index + 1 :]],
             }
 
 
@@ -161,7 +243,7 @@ def get_uci_integer(tokens: list[str], token: str, default: int) -> int:
 
 def validate_nodes(nodes: int) -> int:
     if isinstance(nodes, bool) or not isinstance(nodes, int):
-        raise ValueError("nodes must be an integer.")
+        raise TypeError("nodes must be an integer.")
 
     if not 1 <= nodes <= MAX_NODES:
         raise ValueError(f"nodes must be between 1 and {MAX_NODES:,}.")
@@ -171,7 +253,7 @@ def validate_nodes(nodes: int) -> int:
 
 def validate_multipv(multipv: int) -> int:
     if isinstance(multipv, bool) or not isinstance(multipv, int):
-        raise ValueError("multipv must be an integer.")
+        raise TypeError("multipv must be an integer.")
 
     if not 1 <= multipv <= MAX_MULTIPV:
         raise ValueError(f"multipv must be between 1 and {MAX_MULTIPV}.")
@@ -183,7 +265,9 @@ def parse_board(fen: str) -> chess.Board:
     try:
         board = chess.Board(fen)
     except ValueError as exception:
-        raise ValueError("fen must be a valid Forsyth-Edwards Notation position.") from exception
+        raise ValueError(
+            "fen must be a valid Forsyth-Edwards Notation position."
+        ) from exception
 
     if not board.is_valid():
         raise ValueError("fen does not describe a valid chess position.")
@@ -198,7 +282,9 @@ def parse_move(board: chess.Board, move_text: str) -> chess.Move:
         try:
             move = chess.Move.from_uci(move_text)
         except ValueError as exception:
-            raise ValueError(f"{move_text!r} is neither SAN nor UCI notation.") from exception
+            raise ValueError(
+                f"{move_text!r} is neither SAN nor UCI notation."
+            ) from exception
 
     if move not in board.legal_moves:
         raise ValueError(f"{move_text!r} is not legal in this position.")
@@ -246,14 +332,43 @@ def get_position_summary(board: chess.Board) -> dict[str, Any]:
         "in_check": board.is_check(),
         "game_over": outcome is not None,
         "result": outcome.result() if outcome is not None else None,
-        "termination": outcome.termination.name.lower() if outcome is not None else None,
+        "termination": outcome.termination.name.lower()
+        if outcome is not None
+        else None,
     }
+
+
+def get_position_analysis(
+    board: chess.Board,
+    multipv: int,
+    nodes: int,
+) -> dict[str, Any]:
+    if board.is_game_over(claim_draw=True):
+        return {**get_position_summary(board), "nodes": 0, "lines": []}
+
+    analysis = stockfish.analyze(board, multipv, nodes)
+    lines: list[dict[str, Any]] = []
+
+    for rank, information in enumerate(analysis, start=1):
+        principal_variation = information.get("pv", [])
+        if not principal_variation:
+            continue
+
+        lines.append(
+            {
+                "rank": rank,
+                "evaluation": asdict(get_evaluation(information)),
+                "principal_variation": get_variation(board, principal_variation),
+            }
+        )
+
+    return {**get_position_summary(board), "nodes": nodes, "lines": lines}
 
 
 stockfish = StockfishClient()
 atexit.register(stockfish.close)
 
-mcp = MCPServer(
+mcp = GambitMCPServer(
     name="gambit",
     title="Gambit Chess Tutor",
     description="Analyze chess positions and provide move-by-move tutoring support.",
@@ -261,18 +376,17 @@ mcp = MCPServer(
 
 
 @mcp.tool(description="Inspect a FEN position without engine analysis.")
-def inspect_position(fen: str) -> dict[str, Any]:
+async def inspect_position(fen: str) -> dict[str, Any]:
     return get_position_summary(parse_board(fen))
 
 
 @mcp.tool(description="List legal moves from a FEN position in SAN and UCI notation.")
-def list_legal_moves(fen: str) -> dict[str, Any]:
+async def list_legal_moves(fen: str) -> dict[str, Any]:
     board = parse_board(fen)
     return {
         **get_position_summary(board),
         "moves": [
-            {"san": board.san(move), "uci": move.uci()}
-            for move in board.legal_moves
+            {"san": board.san(move), "uci": move.uci()} for move in board.legal_moves
         ],
     }
 
@@ -291,27 +405,72 @@ async def analyze_position(
     validate_multipv(multipv)
     validate_nodes(nodes)
     board = parse_board(fen)
+    return get_position_analysis(board, multipv, nodes)
 
-    if board.is_game_over(claim_draw=True):
-        return {**get_position_summary(board), "lines": []}
 
-    analysis = await asyncio.to_thread(stockfish.analyze, board, multipv, nodes)
-    lines: list[dict[str, Any]] = []
+@mcp.tool(
+    description=(
+        "Convert an axis-aligned 2D chessboard screenshot or book diagram to FEN "
+        "locally. Pass image as a local path, file URL, raw base64, or base64 data "
+        "URL. Returns confidence and reliability; do not silently trust a result "
+        "whose reliable or plausible field is false."
+    )
+)
+async def recognize_chessboard(
+    image: str,
+    side_to_move: str = "white",
+    orientation: Orientation = "auto",
+    infer_castling_rights: bool = False,
+) -> dict[str, object]:
+    from gambit.ocr import recognize_chessboard_image
 
-    for rank, information in enumerate(analysis, start=1):
-        principal_variation = information.get("pv", [])
-        if not principal_variation:
-            continue
+    return recognize_chessboard_image(
+        image,
+        side_to_move,
+        orientation,
+        infer_castling_rights,
+    )
 
-        lines.append(
-            {
-                "rank": rank,
-                "evaluation": asdict(get_evaluation(information)),
-                "principal_variation": get_variation(board, principal_variation),
-            }
+
+@mcp.tool(
+    description=(
+        "Recognize a chessboard image and analyze it with Stockfish in one fast "
+        "call. Intended for axis-aligned screenshots and diagrams. Unreliable OCR "
+        "is rejected by default so analysis is not based on a silently wrong board."
+    )
+)
+async def analyze_chessboard(
+    image: str,
+    side_to_move: str = "white",
+    orientation: Orientation = "auto",
+    infer_castling_rights: bool = False,
+    multipv: int = DEFAULT_MULTIPV,
+    nodes: int = DEFAULT_NODES,
+    allow_unreliable: bool = False,
+) -> dict[str, Any]:
+    from gambit.ocr import recognize_chessboard_image
+
+    validate_multipv(multipv)
+    validate_nodes(nodes)
+    recognition = recognize_chessboard_image(
+        image,
+        side_to_move,
+        orientation,
+        infer_castling_rights,
+    )
+    if not allow_unreliable and (
+        not recognition["reliable"] or not recognition["plausible"]
+    ):
+        raise ValueError(
+            "chessboard OCR was not reliable enough to analyze automatically; "
+            "inspect uncertain_squares or set allow_unreliable=true explicitly."
         )
 
-    return {**get_position_summary(board), "nodes": nodes, "lines": lines}
+    board = parse_board(str(recognition["fen"]))
+    return {
+        "recognition": recognition,
+        "analysis": get_position_analysis(board, multipv, nodes),
+    }
 
 
 @mcp.tool(
@@ -342,7 +501,7 @@ async def tutor_move(
         result["best_replies"] = []
         return result
 
-    analysis = await asyncio.to_thread(stockfish.analyze, board, multipv, nodes)
+    analysis = stockfish.analyze(board, multipv, nodes)
     result["best_replies"] = [
         {
             "rank": rank,
