@@ -1,0 +1,17 @@
+database_path = "~/.local/share/gambit/gambit.sqlite3"
+engine_path = "stockfish"
+worker_count = 2
+threads_per_worker = 1
+hash_mb_per_worker = 64
+cache_capacity = 512
+is_reproducible = false
+syzygy_path = ""
+speech_executable = "espeak-ng"
+speech_directory = "~/.cache/gambit/speech"
+max_jobs = 16
+instant_nodes = 12000
+quick_nodes = 100000
+deep_nodes = 1000000
+candidate_count = 3
+search_time_ms = 5000
+search_depth = 64

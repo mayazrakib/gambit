@@ -1,0 +1,21 @@
+[Unit]
+Description=Gambit chess tutoring MCP server.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=@GAMBIT_DIRECTORY@
+EnvironmentFile=@GAMBIT_DIRECTORY@/.env
+Environment=PYTHONUNBUFFERED=1
+UnsetEnvironment=OPENAI_API_KEY CONTROL_PLANE_API_KEY CONTROL_PLANE_TUNNEL_ID
+ExecStart="@PYTHON_EXECUTABLE@" -m gambit.main serve --transport streamable-http
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

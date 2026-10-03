@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenAI secure tunnel for Gambit.
+Wants=gambit.service
+After=gambit.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=@GAMBIT_DIRECTORY@
+EnvironmentFile=@GAMBIT_DIRECTORY@/.env
+ExecStart="@TUNNEL_EXECUTABLE@" run --control-plane.api-key env:OPENAI_API_KEY --mcp.server-url url=http://${GAMBIT_HTTP_HOST}:${GAMBIT_HTTP_PORT}/mcp,channel=main --mcp.startup-wait-timeout 30s
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
