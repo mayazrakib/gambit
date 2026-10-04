@@ -35,9 +35,6 @@ Orientation = Literal[
 ]
 
 class AsyncStdin:
-
-    """Read stdin without AnyIO's worker-thread based AsyncFile adapter."""
-
     def __init__(self,) -> None:
         self.reader: asyncio.StreamReader | None = None
         self.transport: asyncio.ReadTransport | None = None
@@ -66,9 +63,6 @@ class AsyncStdin:
         )
 
 class AsyncStdout:
-
-    """Expose stdout with the small async interface expected by stdio_server."""
-
     async def write(
         self,
         data: str,
@@ -85,9 +79,6 @@ class GambitMcpServer(MCPServer):
 
             return
 
-        # The default MCP stdio adapter delegates every read and write to an
-        # AnyIO worker thread. Thread completion notifications are unreliable
-        # in the Python 3.14 runtime used by Gambit, leaving every request hung.
         async with stdio_server(
             stdin=AsyncStdin(),
             stdout=AsyncStdout(),

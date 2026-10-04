@@ -1,12 +1,3 @@
-"""Fast, local chessboard screenshot recognition.
-
-The board detector is a NumPy adaptation of the MIT-licensed fenshot detector
-and the bundled ONNX classifier is fenshot's chess-tiles-v2 model. See
-THIRD_PARTY_NOTICES.md for attribution. The implementation is optimized for
-axis-aligned 2D boards (screenshots and book diagrams), not angled photographs
-of physical boards.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -25,8 +16,6 @@ from urllib.parse import unquote, urlparse
 
 import numpy
 
-# ONNX Runtime 1.30 enables Linux telemetry by default. OCR is deliberately
-# local-only, so disable it before importing the native runtime.
 os.environ.setdefault(
     "ORT_DISABLE_TELEMETRY",
     "1",
@@ -964,9 +953,6 @@ def get_square_name(
     return f"{chr(ord('a',) + file_index,)}{rank}"
 
 class ChessboardRecognizer:
-
-    """Lazy, reusable ONNX recognizer with a small result cache."""
-
     def __init__(self,) -> None:
         self.session: onnxruntime.InferenceSession | None = None
         self.session_lock = threading.Lock()
@@ -1129,8 +1115,6 @@ def recognize_chessboard_image(
     str,
     object,
 ]:
-
-    """Recognize an image and return a compact, AI-friendly result."""
     started = time.perf_counter()
     loaded = load_image(image,)
     result = recognizer.recognize(loaded,)

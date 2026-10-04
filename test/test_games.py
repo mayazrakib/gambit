@@ -21,9 +21,6 @@ from gambit.engine import EngineLine, StockfishClient
 from gambit.main import mcp
 
 class RecordingEngine(StockfishClient):
-
-    """Deterministic search double with explicit White-relative root scores."""
-
     def __init__(
         self,
         scores: dict[
@@ -453,7 +450,7 @@ class GameAnalysisTests(unittest.TestCase):
         self.assertEqual(
             len(engine.calls,),
             7,
-        )  # Five cheap roots, two deep roots.
+        )
         self.assertEqual(
             [nodes for _, nodes, _ in engine.calls],
             [100,] * 5 + [1000,] * 2,

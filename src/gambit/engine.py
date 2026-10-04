@@ -41,14 +41,6 @@ async def execute_engine_request[
     *args: Parameters.args,
     **kwargs: Parameters.kwargs,
 ) -> Result:
-
-    """Keep MCP responsive despite broken thread wakeups in the supported runtime.
-
-    Poll the bounded worker pool instead of relying on thread completion to wake
-    the event loop (also avoided by Gambit's stdio adapter). Engine locking is
-    per position, so independent requests can share the warm process safely.
-    """
-
     if not ENGINE_REQUEST_SLOTS.acquire(blocking=False,):
         raise RuntimeError("The MCP operation queue is full. Retry after active work completes.",)
 
@@ -129,8 +121,6 @@ class StockfishClient:
             self.stop()
 
     def stop(self,) -> None:
-
-        """Dispose of a failed or finished process while holding the client lock."""
         process = self.process
         self.process = None
         self.multipv = None
@@ -308,7 +298,6 @@ class StockfishClient:
                     self.send(f"setoption name MultiPV value {multipv}",)
                     self.multipv = multipv
 
-                # Reproducible mode isolates searches from earlier hash state.
                 if self.configuration.is_reproducible:
                     self.send("ucinewgame",)
 

@@ -1,5 +1,3 @@
-"""Standard-chess game analysis. Scores always use White's perspective."""
-
 import io
 import re
 from collections.abc import Mapping, Sequence
@@ -46,7 +44,6 @@ SUBSTANTIAL_ADVANTAGE_CP = 200
 EQUAL_POSITION_CP = 50
 MATE_LENGTH_CHANGE = 2
 
-# Inclusive upper bounds, in centipawns. These are Gambit labels, not engine facts.
 CLASSIFICATION_THRESHOLDS: tuple[
     tuple[
         int,
@@ -95,7 +92,6 @@ class EngineEvaluation:
     centipawns: int | None
     mate_in: int | None
 
-    # Disambiguates terminal mate_in=0, which cannot carry a sign in JSON.
     mating_side: Side | None = None
 
 @dataclass(frozen=True,)
@@ -226,9 +222,6 @@ class GameReview:
     ]
 
 class ValidatedGameBuilder(chess.pgn.GameBuilder):
-
-    """Make python-chess parsing errors fatal instead of returning partial games."""
-
     def begin_game(self,) -> None:
         super().begin_game()
         self.game.headers.clear()
@@ -305,8 +298,6 @@ class ValidatedGameBuilder(chess.pgn.GameBuilder):
         raise ValueError(f"Invalid PGN: {error}.",) from error
 
 def validate_pgn_tokens(pgn: str,) -> None:
-
-    """Reject text the forgiving library lexer would otherwise silently skip."""
     token_pattern = re.compile(
         r"\s+|\ufeff|\{[^}]*\}|;[^\n]*|(?m:^%[^\n]*)|"
         r'(?m:^\[[A-Za-z0-9][A-Za-z0-9_+#=:-]*\s+"[^\r\n]*"\][ \t]*$)|'
@@ -407,7 +398,6 @@ def parse_game(pgn: str,) -> ParsedGame:
             tuple(sorted(node.nags,),),
         ),)
 
-    # A header-only game is valid to inspect, but not to engine-analyze.
     return ParsedGame(
         dict(game.headers,),
         initial_fen,
@@ -425,7 +415,6 @@ def normalize_evaluation(
     if mate_in is not None:
         mate = mate_in * sign
 
-        # UCI mate 0 means the side to move has already been mated.
         mating_side: Side = (
             ("black" if turn else "white") if mate_in == 0 else ("white" if mate > 0 else "black")
         )
@@ -722,7 +711,6 @@ def analyze_game(
 
         return cache[key]
 
-    # Finish the cheap pass before selecting any deeper searches.
     for move in selected:
         get_analysis(
             move.fen_before,
@@ -871,7 +859,6 @@ def classify_move(
         if before.mating_side is not None and after.mating_side is None:
             return "excellent"
 
-        # Retaining an opponent's forced mate cannot be assigned an ordinary CP loss.
         return "good"
 
     if move.uci == move.best_move_uci:
