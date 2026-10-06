@@ -69,4 +69,4 @@ Installed Stockfish and the vision extra are needed for their respective integra
 
 ## License
 
-Gambit is written by Mayaz Rakib and released under the [MIT license](LICENSE). Stockfish, python-chess, the bundled opening corpus, and optional vision assets retain their own licenses and attribution.
+Gambit is released under the [MIT license](LICENSE). Stockfish, python-chess, the bundled opening corpus, and optional vision assets retain their own licenses and attribution.
