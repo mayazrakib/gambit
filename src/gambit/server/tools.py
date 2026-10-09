@@ -2,20 +2,25 @@ import atexit
 import threading
 from dataclasses import asdict
 
-from gambit.analysis import AnalysisService, EnginePool
-from gambit.configuration import load_configuration
-from gambit.contracts import PositionEvidence
-from gambit.corpus import load_bundled_openings
-from gambit.engine import execute_engine_request
-from gambit.features import inspect_features
-from gambit.knowledge import Knowledge
-from gambit.learning import Learning
-from gambit.opening_plans import OpeningPlans
-from gambit.progressive import ProgressiveAnalysis
-from gambit.speech import Speech, create_speech_plan
-from gambit.storage import Store
-from gambit.training import LESSONS, Training, get_repertoire_progress_id, validate_training_id
-from gambit.tutoring import Tutor
+from gambit.api.contracts import PositionEvidence
+from gambit.engine.analysis import AnalysisService, EnginePool
+from gambit.engine.client import execute_engine_request
+from gambit.game.features import inspect_features
+from gambit.infrastructure.configuration import load_configuration
+from gambit.infrastructure.corpus import load_bundled_openings
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.base import Knowledge
+from gambit.learning.openings import OpeningPlans
+from gambit.learning.progressive import ProgressiveAnalysis
+from gambit.learning.service import Learning
+from gambit.learning.speech import Speech, create_speech_plan
+from gambit.learning.training import (
+    LESSONS,
+    Training,
+    get_repertoire_progress_id,
+    validate_training_id,
+)
+from gambit.learning.tutoring import Tutor
 
 class Runtime:
     def __init__(
@@ -77,7 +82,7 @@ def register_tools(
     engine: EnginePool | None = None,
 ) -> None:
     owner = RuntimeOwner(engine,)
-    from gambit.extended_tools import register_extended_tools
+    from gambit.server.extended_tools import register_extended_tools
 
     register_extended_tools(
         server,
@@ -357,7 +362,7 @@ def register_tools(
         str,
         object,
     ]:
-        from gambit.engine import parse_board, parse_move
+        from gambit.engine.client import parse_board, parse_move
         runtime = owner.get_runtime()
 
         with runtime.store.lock:

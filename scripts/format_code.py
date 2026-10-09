@@ -6,7 +6,7 @@ from pathlib import Path
 import libcst
 from libcst.metadata import PositionProvider
 
-ROOT = Path(__file__,).resolve().parents[1]
+DEFAULT_ROOT = Path(__file__,).resolve().parents[1]
 CONTROL_TYPES = (libcst.If, libcst.For, libcst.While, libcst.Try, libcst.With, libcst.Match)
 
 def is_section(statement,) -> bool:
@@ -424,11 +424,17 @@ def main() -> None:
         "--check",
         action="store_true",
     )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_ROOT,
+    )
     arguments = parser.parse_args()
+    root = arguments.root.resolve()
     failures = []
 
     for directory in ("src", "test", "scripts"):
-        for path in sorted((ROOT / directory).rglob("*.py",),):
+        for path in sorted((root / directory).rglob("*.py",),):
             source = path.read_text()
             formatted = format_source(source,)
 
@@ -436,7 +442,7 @@ def main() -> None:
                 continue
 
             if arguments.check:
-                failures.append(str(path.relative_to(ROOT,),),)
+                failures.append(str(path.relative_to(root,),),)
             else:
                 path.write_text(formatted,)
 

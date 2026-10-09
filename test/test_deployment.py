@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from gambit import configuration
+from gambit.infrastructure import configuration
 from scripts.install_services import render_service
 
 def test_dotenv_is_package_local_and_preserves_environment(
@@ -13,7 +13,7 @@ def test_dotenv_is_package_local_and_preserves_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     package_directory = tmp_path / "gambit"
-    module_path = package_directory / "src" / "gambit" / "configuration.py"
+    module_path = package_directory / "src" / "gambit" / "infrastructure" / "configuration.py"
     module_path.parent.mkdir(parents=True,)
     (tmp_path / ".env").write_text("GAMBIT_TEST_PARENT=parent\n",)
     (package_directory / ".env").write_text("GAMBIT_TEST_LOCAL=package\nGAMBIT_TEST_OVERRIDE=package\n",)
@@ -43,7 +43,7 @@ def test_missing_package_dotenv_does_not_search_parents(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module_path = tmp_path / "gambit" / "src" / "gambit" / "configuration.py"
+    module_path = tmp_path / "gambit" / "src" / "gambit" / "infrastructure" / "configuration.py"
     module_path.parent.mkdir(parents=True,)
     (tmp_path / ".env").write_text("GAMBIT_TEST_PARENT=parent\n",)
     monkeypatch.setattr(

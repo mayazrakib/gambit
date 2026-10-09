@@ -15,7 +15,7 @@ from typing import NotRequired, TypedDict
 
 import chess
 
-from gambit.configuration import Configuration
+from gambit.infrastructure.configuration import Configuration
 
 DEFAULT_NODES = 100_000
 DEFAULT_MULTIPV = 3

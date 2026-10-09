@@ -1,13 +1,13 @@
 from dataclasses import asdict
 
-from gambit.analysis import AnalysisService
-from gambit.assessment import assess_move, build_board
-from gambit.engine import parse_move
-from gambit.features import inspect_features
-from gambit.knowledge import Knowledge
-from gambit.opening_plans import OpeningPlans
-from gambit.speech import create_speech_plan, pronounce_move
-from gambit.storage import Store
+from gambit.engine.analysis import AnalysisService
+from gambit.engine.client import parse_move
+from gambit.game.assessment import assess_move, build_board
+from gambit.game.features import inspect_features
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.base import Knowledge
+from gambit.learning.openings import OpeningPlans
+from gambit.learning.speech import create_speech_plan, pronounce_move
 
 class Tutor:
     def __init__(

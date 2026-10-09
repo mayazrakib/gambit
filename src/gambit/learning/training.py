@@ -6,9 +6,9 @@ import re
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from gambit.engine import parse_board, parse_move
-from gambit.knowledge import get_position_key
-from gambit.storage import Store
+from gambit.engine.client import parse_board, parse_move
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.base import get_position_key
 
 def get_repertoire_progress_id(fen: str,) -> str:
     key = get_position_key(parse_board(fen,),)
@@ -308,7 +308,7 @@ class Training:
             if candidate.uci() != puzzle["solution"][snapshot["ply"]]:
                 from dataclasses import asdict
 
-                from gambit.assessment import assess_move
+                from gambit.game.assessment import assess_move
 
                 assessment = assess_move(
                     self.analysis.engine,

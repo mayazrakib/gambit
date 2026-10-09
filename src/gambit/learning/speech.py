@@ -6,7 +6,7 @@ from pathlib import Path
 
 import chess
 
-from gambit.engine import parse_board, parse_move
+from gambit.engine.client import parse_board, parse_move
 
 def pronounce_move(
     board: chess.Board,

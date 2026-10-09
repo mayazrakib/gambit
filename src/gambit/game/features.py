@@ -1,6 +1,6 @@
 import chess
 
-from gambit.engine import parse_board
+from gambit.engine.client import parse_board
 
 PIECE_POINTS = {
     chess.PAWN: 1,

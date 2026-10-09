@@ -6,15 +6,15 @@ from uuid import uuid4
 
 import chess
 
-from gambit.assessment import MoveAssessment, assess_move, build_board
-from gambit.contracts import ConceptProgress, ReviewLessons
-from gambit.engine import parse_move
-from gambit.features import inspect_features
-from gambit.storage import Store
-from gambit.training import validate_training_id
+from gambit.api.contracts import ConceptProgress, ReviewLessons
+from gambit.engine.client import parse_move
+from gambit.game.assessment import MoveAssessment, assess_move, build_board
+from gambit.game.features import inspect_features
+from gambit.infrastructure.storage import Store
+from gambit.learning.training import validate_training_id
 
 if TYPE_CHECKING:
-    from gambit.analysis import AnalysisService
+    from gambit.engine.analysis import AnalysisService
 
 @dataclass(frozen=True,)
 class TeachingQuestion:

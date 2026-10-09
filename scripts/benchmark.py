@@ -7,9 +7,9 @@ from time import perf_counter
 
 import chess
 
-from gambit.analysis import AnalysisService
-from gambit.configuration import Configuration
-from gambit.storage import Store
+from gambit.engine.analysis import AnalysisService
+from gambit.infrastructure.configuration import Configuration
+from gambit.infrastructure.storage import Store
 
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="gambit-benchmark-",) as directory:

@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING, Literal
 
 import chess
 
-from gambit.engine import EngineLine, parse_board, parse_move
-from gambit.games import EngineEvaluation, get_variation, normalize_evaluation
+from gambit.engine.client import EngineLine, parse_board, parse_move
+from gambit.game.service import EngineEvaluation, get_variation, normalize_evaluation
 
 if TYPE_CHECKING:
-    from gambit.analysis import EnginePool
+    from gambit.engine.analysis import EnginePool
 
 SERIOUS_LOSS_CP = 150
 ACCEPTABLE_LOSS_CP = 30

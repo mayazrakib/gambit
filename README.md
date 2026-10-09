@@ -67,6 +67,8 @@ uv build
 
 Installed Stockfish and the vision extra are needed for their respective integration tests. These checks cover chess and protocol behavior; they do not measure tutoring quality, model generation latency, or remote tunnel latency.
 
+The package groups its contracts, engine integration, game analysis, infrastructure, knowledge sources, learning services, MCP server, and optional vision support into matching subpackages under `src/gambit/`.
+
 ## License
 
 Gambit is released under the [MIT license](LICENSE). Stockfish, python-chess, the bundled opening corpus, and optional vision assets retain their own licenses and attribution.

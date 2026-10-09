@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 def load_package_environment() -> None:
-    package_directory = Path(__file__,).resolve().parents[2]
+    package_directory = Path(__file__,).resolve().parents[3]
     environment_path = package_directory / ".env"
 
     for name, setting in dotenv_values(environment_path,).items():

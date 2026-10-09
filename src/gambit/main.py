@@ -12,10 +12,8 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.stdio import stdio_server
 
-from gambit import games
-from gambit.analysis import EnginePool
-from gambit.configuration import load_configuration
-from gambit.engine import (
+from gambit.engine.analysis import EnginePool
+from gambit.engine.client import (
     DEFAULT_MULTIPV,
     DEFAULT_NODES,
     execute_engine_request,
@@ -26,7 +24,9 @@ from gambit.engine import (
     validate_multipv,
     validate_nodes,
 )
-from gambit.tools import register_tools
+from gambit.game import service as games
+from gambit.infrastructure.configuration import load_configuration
+from gambit.server.tools import register_tools
 
 Orientation = Literal[
     "auto",
@@ -214,7 +214,7 @@ async def recognize_chessboard(
     str,
     object,
 ]:
-    from gambit.ocr import recognize_chessboard_image
+    from gambit.vision.recognizer import recognize_chessboard_image
 
     return await execute_engine_request(
         recognize_chessboard_image,
@@ -241,7 +241,7 @@ async def analyze_chessboard(
     str,
     Any,
 ]:
-    from gambit.ocr import recognize_chessboard_image
+    from gambit.vision.recognizer import recognize_chessboard_image
     validate_multipv(multipv,)
     validate_nodes(nodes,)
     recognition = await execute_engine_request(
@@ -428,8 +428,8 @@ def main() -> None:
     arguments = parser.parse_args()
 
     if arguments.command == "initialize":
-        from gambit.corpus import load_bundled_openings
-        from gambit.storage import Store
+        from gambit.infrastructure.corpus import load_bundled_openings
+        from gambit.infrastructure.storage import Store
 
         configuration = load_configuration()
         store = Store(configuration.database_path,)

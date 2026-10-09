@@ -12,12 +12,12 @@ from uuid import uuid4
 
 import chess
 
-from gambit.configuration import Configuration
-from gambit.contracts import AnalysisMetrics, EngineIdentity, GameJob, PositionEvidence
-from gambit.engine import StockfishClient, parse_board, parse_move
-from gambit.games import analyze_board, analyze_game, review_game
-from gambit.storage import Store
-from gambit.tablebases import Tablebases
+from gambit.api.contracts import AnalysisMetrics, EngineIdentity, GameJob, PositionEvidence
+from gambit.engine.client import StockfishClient, parse_board, parse_move
+from gambit.game.service import analyze_board, analyze_game, review_game
+from gambit.infrastructure.configuration import Configuration
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.tablebases import Tablebases
 
 PROFILES = {"instant": (12000, 1), "quick": (100000, 3), "deep": (1000000, 3),}
 
@@ -352,7 +352,7 @@ class AnalysisService:
         profile: str = "quick",
         history: list[str] | None = None,
     ) -> dict:
-        from gambit.assessment import assess_move, build_board
+        from gambit.game.assessment import assess_move, build_board
 
         board = build_board(
             fen,
@@ -402,7 +402,7 @@ class AnalysisService:
         pgn: str,
         should_review: bool = True,
     ) -> GameJob:
-        from gambit.games import parse_game
+        from gambit.game.service import parse_game
         parse_game(pgn,)
 
         with self.lock:

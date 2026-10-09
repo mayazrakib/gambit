@@ -2,8 +2,8 @@ import argparse
 import json
 from dataclasses import asdict
 
-from gambit.configuration import load_configuration
-from gambit.tablebases import Tablebases
+from gambit.infrastructure.configuration import load_configuration
+from gambit.knowledge.tablebases import Tablebases
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect local tablebases and optionally verify a trusted SHA-256 manifest.",)

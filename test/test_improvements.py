@@ -8,16 +8,16 @@ from types import SimpleNamespace
 import chess
 import pytest
 
-from gambit.analysis import AnalysisService, EnginePool
-from gambit.assessment import assess_move, build_board, classify_loss
-from gambit.configuration import Configuration, load_package_environment
-from gambit.engine import StockfishClient
-from gambit.learning import Learning
-from gambit.opening_plans import OpeningPlan, OpeningPlans
-from gambit.progressive import ProgressiveAnalysis
-from gambit.storage import Store
-from gambit.tablebases import Tablebases
-from gambit.training import Training, get_repertoire_progress_id
+from gambit.engine.analysis import AnalysisService, EnginePool
+from gambit.engine.client import StockfishClient
+from gambit.game.assessment import assess_move, build_board, classify_loss
+from gambit.infrastructure.configuration import Configuration, load_package_environment
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.tablebases import Tablebases
+from gambit.learning.openings import OpeningPlan, OpeningPlans
+from gambit.learning.progressive import ProgressiveAnalysis
+from gambit.learning.service import Learning
+from gambit.learning.training import Training, get_repertoire_progress_id
 from scripts.maintain_storage import restore_backup
 
 class CandidateEngine:
@@ -238,8 +238,8 @@ def test_package_dotenv_does_not_load_tunnel_credentials(
     tmp_path,
     monkeypatch,
 ):
-    from gambit import configuration
-    module_path = tmp_path / "src" / "gambit" / "configuration.py"
+    from gambit.infrastructure import configuration
+    module_path = tmp_path / "src" / "gambit" / "infrastructure" / "configuration.py"
     module_path.parent.mkdir(parents=True,)
     (tmp_path / ".env").write_text("OPENAI_API_KEY=fake-test-key\nCONTROL_PLANE_TUNNEL_ID=fake-tunnel\nGAMBIT_HTTP_PORT=3999\n",)
     monkeypatch.setattr(
@@ -444,7 +444,7 @@ def test_live_engine_recovers_after_process_exit():
         engine.close()
 
 def test_repertoire_spaced_review_uses_position_identity(database,):
-    from gambit.knowledge import Knowledge
+    from gambit.knowledge.base import Knowledge
     Knowledge(database,).import_study(
         "1. Nf3 d5 2. d4 *",
         "Repertoire",
@@ -560,7 +560,7 @@ def test_completed_report_is_idempotent_across_json_containers(database,):
     )["moves"] == ["e4", "e5",]
 
 def test_starter_plans_are_versioned_and_idempotent(database,):
-    from gambit.opening_plans import load_starter_plans
+    from gambit.learning.openings import load_starter_plans
     assert load_starter_plans(database,) == 4
     assert load_starter_plans(database,) == 4
     assert database.count_records("opening_plan",) == 4

@@ -966,7 +966,9 @@ class ChessboardRecognizer:
         configured = os.environ.get("GAMBIT_OCR_MODEL",)
 
         return (
-            Path(configured,) if configured else Path(__file__,).with_name("models",) / MODEL_FILENAME
+            Path(configured,)
+            if configured
+            else Path(__file__,).parents[1] / "models" / MODEL_FILENAME
         )
 
     def get_session(self,) -> onnxruntime.InferenceSession:

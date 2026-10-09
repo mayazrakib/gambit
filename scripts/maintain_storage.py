@@ -5,8 +5,8 @@ from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from gambit.configuration import load_configuration
-from gambit.storage import Store
+from gambit.infrastructure.configuration import load_configuration
+from gambit.infrastructure.storage import Store
 
 def restore_backup(
     source: str,

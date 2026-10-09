@@ -16,8 +16,8 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult
 
-from gambit import games
-from gambit.engine import EngineLine, StockfishClient
+from gambit.engine.client import EngineLine, StockfishClient
+from gambit.game import service as games
 from gambit.main import mcp
 
 class RecordingEngine(StockfishClient):
@@ -989,7 +989,7 @@ class StockfishLifecycleTests(unittest.TestCase):
                     {"STOCKFISH_PATH": str(executable,),},
                 ),
                 patch(
-                    "gambit.engine.ENGINE_RESPONSE_TIMEOUT_SECONDS",
+                    "gambit.engine.client.ENGINE_RESPONSE_TIMEOUT_SECONDS",
                     0.1,
                 ),
                 self.assertRaisesRegex(

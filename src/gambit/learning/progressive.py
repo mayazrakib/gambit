@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from gambit.assessment import build_board
-from gambit.contracts import ProgressiveStart, ProgressiveStatus
-from gambit.training import validate_training_id
+from gambit.api.contracts import ProgressiveStart, ProgressiveStatus
+from gambit.game.assessment import build_board
+from gambit.learning.training import validate_training_id
 
 if TYPE_CHECKING:
-    from gambit.analysis import AnalysisService
+    from gambit.engine.analysis import AnalysisService
 
 @dataclass
 class AnalysisRequest:

@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING
 
-from gambit.assessment import MoveAssessment, assess_move
-from gambit.contracts import (
+from gambit.api.contracts import (
     AnalysisMetrics,
     ConceptReport,
     GameJob,
@@ -13,13 +12,14 @@ from gambit.contracts import (
     ProgressiveStatus,
     ReviewLessons,
 )
-from gambit.engine import execute_engine_request
-from gambit.learning import TeachingFeedback, TeachingQuestion
-from gambit.opening_plans import OpeningPlan
-from gambit.tablebases import TablebaseDiagnostics
+from gambit.engine.client import execute_engine_request
+from gambit.game.assessment import MoveAssessment, assess_move
+from gambit.knowledge.tablebases import TablebaseDiagnostics
+from gambit.learning.openings import OpeningPlan
+from gambit.learning.service import TeachingFeedback, TeachingQuestion
 
 if TYPE_CHECKING:
-    from gambit.tools import RuntimeOwner
+    from gambit.server.tools import RuntimeOwner
 
 def register_extended_tools(
     server,

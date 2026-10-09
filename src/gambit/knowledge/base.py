@@ -9,9 +9,9 @@ import chess
 import chess.pgn
 import chess.syzygy
 
-from gambit.engine import parse_board
-from gambit.games import ValidatedGameBuilder, validate_pgn_tokens
-from gambit.storage import Store
+from gambit.engine.client import parse_board
+from gambit.game.service import ValidatedGameBuilder, validate_pgn_tokens
+from gambit.infrastructure.storage import Store
 
 MAX_IMPORT_BYTES = 8 * 1024 * 1024
 

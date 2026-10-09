@@ -6,7 +6,7 @@ from pathlib import Path
 
 import chess.syzygy
 
-from gambit.knowledge import probe_tablebase
+from gambit.knowledge.base import probe_tablebase
 
 @dataclass(frozen=True,)
 class TablebaseDiagnostics:

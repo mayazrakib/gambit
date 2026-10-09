@@ -8,7 +8,7 @@ from typing import Literal
 import chess
 import chess.pgn
 
-from gambit.engine import (
+from gambit.engine.client import (
     ENGINE_HASH_MB,
     ENGINE_THREADS,
     StockfishClient,

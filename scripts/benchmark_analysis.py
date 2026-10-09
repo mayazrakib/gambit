@@ -8,12 +8,12 @@ from time import perf_counter
 
 import chess
 
-from gambit.analysis import AnalysisService
-from gambit.configuration import Configuration
-from gambit.features import inspect_features
-from gambit.knowledge import Knowledge
-from gambit.storage import Store
-from gambit.tutoring import Tutor
+from gambit.engine.analysis import AnalysisService
+from gambit.game.features import inspect_features
+from gambit.infrastructure.configuration import Configuration
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.base import Knowledge
+from gambit.learning.tutoring import Tutor
 
 def run_benchmark(
     iterations: int,

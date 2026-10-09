@@ -3,14 +3,14 @@ import asyncio
 import chess
 import pytest
 
-from gambit.analysis import AnalysisService
-from gambit.configuration import Configuration
-from gambit.features import inspect_features
-from gambit.knowledge import Knowledge, probe_tablebase
-from gambit.speech import create_speech_plan
-from gambit.storage import Store
-from gambit.training import Training
-from gambit.tutoring import Tutor
+from gambit.engine.analysis import AnalysisService
+from gambit.game.features import inspect_features
+from gambit.infrastructure.configuration import Configuration
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.base import Knowledge, probe_tablebase
+from gambit.learning.speech import create_speech_plan
+from gambit.learning.training import Training
+from gambit.learning.tutoring import Tutor
 
 @pytest.fixture
 def store():
@@ -316,7 +316,7 @@ async def test_new_tools_over_stdio(tmp_path,):
                 assert invalid.is_error
 
 def test_bundled_opening_corpus_is_legal_and_idempotent(store,):
-    from gambit.corpus import load_bundled_openings
+    from gambit.infrastructure.corpus import load_bundled_openings
 
     report = load_bundled_openings(store,)
     assert report["imported_lines"] == 3864
@@ -421,7 +421,7 @@ def test_speech_provider_adapter_and_cache(
     tmp_path,
     monkeypatch,
 ):
-    from gambit.speech import Speech
+    from gambit.learning.speech import Speech
 
     calls = []
 
@@ -435,11 +435,11 @@ def test_speech_provider_adapter_and_cache(
         Path(arguments[arguments.index("-w",) + 1],).write_bytes(b"RIFFtest",)
 
     monkeypatch.setattr(
-        "gambit.speech.shutil.which",
+        "gambit.learning.speech.shutil.which",
         lambda executable: "/mock/espeak-ng",
     )
     monkeypatch.setattr(
-        "gambit.speech.subprocess.run",
+        "gambit.learning.speech.subprocess.run",
         synthesize,
     )
     speech = Speech(
@@ -456,10 +456,10 @@ def test_missing_speech_provider_is_explicit(
     tmp_path,
     monkeypatch,
 ):
-    from gambit.speech import Speech
+    from gambit.learning.speech import Speech
 
     monkeypatch.setattr(
-        "gambit.speech.shutil.which",
+        "gambit.learning.speech.shutil.which",
         lambda executable: None,
     )
 

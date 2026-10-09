@@ -5,9 +5,9 @@ from importlib.resources import files
 
 import chess
 
-from gambit.knowledge import get_position_key
-from gambit.opening_plans import load_starter_plans
-from gambit.storage import Store
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.base import get_position_key
+from gambit.learning.openings import load_starter_plans
 
 OPENING_REVISION = "5a13018164f6bd88f48b3dc31a8e2a39f31a060a"
 OPENING_SOURCE = f"https://github.com/lichess-org/chess-openings/tree/{OPENING_REVISION}"

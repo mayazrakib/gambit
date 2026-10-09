@@ -3,15 +3,15 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import date
 
-from gambit.contracts import (
+from gambit.api.contracts import (
     OpeningCoverage,
     OpeningPlanRecord,
     OpeningPlanReport,
     OpeningStatistics,
 )
-from gambit.engine import parse_board, parse_move
-from gambit.knowledge import get_position_key
-from gambit.storage import Store
+from gambit.engine.client import parse_board, parse_move
+from gambit.infrastructure.storage import Store
+from gambit.knowledge.base import get_position_key
 
 STARTER_PLANS = (
     (
