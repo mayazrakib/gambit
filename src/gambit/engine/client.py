@@ -11,10 +11,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from queue import Empty, Queue
 from time import monotonic
-from typing import NotRequired, TypedDict
 
 import chess
 
+from gambit.engine.uci import EngineLine, get_uci_integer, parse_analysis_line
 from gambit.infrastructure.configuration import Configuration
 
 DEFAULT_NODES = 100_000
@@ -64,14 +64,6 @@ async def execute_engine_request[
         return future.result()
     finally:
         future.cancel()
-
-class EngineLine(TypedDict):
-    centipawns: int | None
-    mate_in: int | None
-    pv: list[chess.Move]
-    depth: NotRequired[int]
-    actual_nodes: NotRequired[int]
-    engine_time_ms: NotRequired[int]
 
 def get_stockfish_path() -> str:
     configured_path = os.environ.get("STOCKFISH_PATH",)
@@ -381,84 +373,14 @@ class StockfishClient:
                 )
                 self.last_metrics[field] = metric
 
-            rank = get_uci_integer(
+            parsed_line = parse_analysis_line(
                 tokens,
-                "multipv",
-                default=1,
-            )
-            score_index = get_uci_token_index(
-                tokens,
-                "score",
-            )
-            pv_index = get_uci_token_index(
-                tokens,
-                "pv",
+                self.last_metrics,
             )
 
-            if score_index is None or pv_index is None or score_index + 2 >= len(tokens,):
-                continue
-
-            if "lowerbound" in tokens or "upperbound" in tokens:
-                continue
-
-            score_type = tokens[score_index + 1]
-
-            if score_type not in ("cp", "mate"):
-                continue
-
-            score_value = int(tokens[score_index + 2],)
-            moves: list[chess.Move] = []
-
-            for token in tokens[pv_index + 1 :]:
-                try:
-                    moves.append(chess.Move.from_uci(token,),)
-                except ValueError:
-                    break
-
-            lines_by_rank[rank] = {
-                "centipawns": score_value if score_type == "cp" else None,
-                "mate_in": score_value if score_type == "mate" else None,
-                "pv": moves,
-                "depth": self.last_metrics.get(
-                    "depth",
-                    0,
-                ),
-                "actual_nodes": self.last_metrics.get(
-                    "nodes",
-                    0,
-                ),
-                "engine_time_ms": self.last_metrics.get(
-                    "time",
-                    0,
-                ),
-            }
-
-def get_uci_token_index(
-    tokens: list[str],
-    token: str,
-) -> int | None:
-    try:
-        return tokens.index(token,)
-    except ValueError:
-        return None
-
-def get_uci_integer(
-    tokens: list[str],
-    token: str,
-    default: int,
-) -> int:
-    token_index = get_uci_token_index(
-        tokens,
-        token,
-    )
-
-    if token_index is None or token_index + 1 >= len(tokens,):
-        return default
-
-    try:
-        return int(tokens[token_index + 1],)
-    except ValueError:
-        return default
+            if parsed_line is not None:
+                rank, information = parsed_line
+                lines_by_rank[rank] = information
 
 def validate_nodes(nodes: int,) -> int:
     if isinstance(

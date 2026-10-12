@@ -24,7 +24,7 @@ from gambit.engine.client import (
     validate_multipv,
     validate_nodes,
 )
-from gambit.game import service as games
+from gambit.game import service
 from gambit.infrastructure.configuration import load_configuration
 from gambit.server.tools import register_tools
 
@@ -331,20 +331,20 @@ async def tutor_move(
     return result
 
 @mcp.tool(description="Parse one standard-chess PGN without Stockfish. Plies are one-based from the supplied starting position.",)
-async def parse_game(pgn: str,) -> games.ParsedGame:
+async def parse_game(pgn: str,) -> service.ParsedGame:
     try:
-        return games.parse_game(pgn,)
+        return service.parse_game(pgn,)
     except ValueError as exception:
         raise ToolError(str(exception,),) from exception
 
 @mcp.tool(description="Analyze a batch of FEN requests through one warm Stockfish process. All scores use White's perspective.",)
-async def analyze_positions(positions: list[games.PositionAnalysisRequest],) -> tuple[
-    games.PositionAnalysis,
+async def analyze_positions(positions: list[service.PositionAnalysisRequest],) -> tuple[
+    service.PositionAnalysis,
     ...,
 ]:
     try:
         return await execute_engine_request(
-            games.analyze_positions,
+            service.analyze_positions,
             positions,
             stockfish,
         )
@@ -354,15 +354,15 @@ async def analyze_positions(positions: list[games.PositionAnalysisRequest],) -> 
 @mcp.tool(description="Analyze a complete standard-chess PGN with adaptive Stockfish searches. Scores use White's perspective; nodes is the configured per-position budget.",)
 async def analyze_game(
     pgn: str,
-    side: games.AnalysisSide = "both",
+    side: service.AnalysisSide = "both",
     initial_nodes: int = 20_000,
     critical_nodes: int = 250_000,
     multipv: int = 3,
     critical_loss_cp: int = 40,
-) -> games.GameAnalysis:
+) -> service.GameAnalysis:
     try:
         return await execute_engine_request(
-            games.analyze_game,
+            service.analyze_game,
             pgn,
             stockfish,
             side,
@@ -377,15 +377,15 @@ async def analyze_game(
 @mcp.tool(description="Analyze and classify a complete PGN with deterministic Gambit review labels and per-player summaries. No prose coaching is generated.",)
 async def review_game(
     pgn: str,
-    side: games.AnalysisSide = "both",
+    side: service.AnalysisSide = "both",
     initial_nodes: int = 20_000,
     critical_nodes: int = 250_000,
     multipv: int = 3,
     critical_loss_cp: int = 40,
-) -> games.GameReview:
+) -> service.GameReview:
     try:
         return await execute_engine_request(
-            games.review_game,
+            service.review_game,
             pgn,
             stockfish,
             side,
