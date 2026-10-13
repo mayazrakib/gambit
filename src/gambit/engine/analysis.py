@@ -20,6 +20,21 @@ from gambit.infrastructure.storage import Store
 from gambit.knowledge.tablebases import Tablebases
 
 PROFILES = {"instant": (12000, 1), "quick": (100000, 3), "deep": (1000000, 3),}
+SPOKEN_VARIATION_PLIES = 4
+
+def compact_position_evidence(evidence: PositionEvidence,) -> PositionEvidence:
+    return {
+        **evidence,
+        "is_compact": True,
+        "principal_variations": [
+            {
+                **variation,
+                "moves_uci": variation["moves_uci"][:SPOKEN_VARIATION_PLIES],
+                "moves_san": variation["moves_san"][:SPOKEN_VARIATION_PLIES],
+            }
+            for variation in evidence["principal_variations"]
+        ],
+    }
 
 class EnginePool:
     def __init__(
@@ -214,6 +229,26 @@ class EnginePool:
             "is_reproducible": self.configuration.is_reproducible,
         }
 
+    def warm_up(self,) -> None:
+        def start_client(client: StockfishClient,) -> None:
+            with client.lock:
+                if client.process is None:
+                    try:
+                        client.start()
+                    except BaseException:
+                        client.stop()
+
+                        raise
+
+        with ThreadPoolExecutor(max_workers=len(self.clients,),) as executor:
+            futures = [executor.submit(
+                start_client,
+                client,
+            ) for client in self.clients]
+
+            for future in futures:
+                future.result()
+
     def close(self,) -> None:
         with self.lock:
             self.is_closed = True
@@ -235,6 +270,10 @@ class AnalysisService:
         self.tablebases = Tablebases(configuration.syzygy_path,)
         self.executor = ThreadPoolExecutor(max_workers=2,)
         self.lock = threading.Lock()
+        self.evidence_ids: OrderedDict[
+            tuple,
+            str,
+        ] = OrderedDict()
         self.jobs: dict[
             str,
             tuple,
@@ -270,7 +309,7 @@ class AnalysisService:
     def evaluate(
         self,
         fen: str,
-        profile: str = "quick",
+        profile: str = "instant",
         moves: list[str] | None = None,
         cancellation: threading.Event | None = None,
         is_background: bool = False,
@@ -296,6 +335,26 @@ class AnalysisService:
         multipv = 1 if profile == "instant" else self.configuration.candidate_count
         started = monotonic()
         pool = self.engine
+        evidence_key = (fen, tuple(moves or [],), moves is not None, profile)
+
+        if cancellation is not None and cancellation.is_set():
+            raise InterruptedError("Analysis was cancelled.",)
+
+        with self.lock:
+            evidence_id = self.evidence_ids.get(evidence_key,)
+
+            if evidence_id is not None:
+                cached = self.store.get(
+                    "analysis",
+                    evidence_id,
+                )
+
+                if cached is not None:
+                    self.evidence_ids.move_to_end(evidence_key,)
+
+                    return cached
+
+                del self.evidence_ids[evidence_key]
 
         class RequestEngine:
             def analyze(
@@ -343,13 +402,20 @@ class AnalysisService:
             is_immutable=True,
         )
 
+        with self.lock:
+            self.evidence_ids[evidence_key] = analysis["id"]
+            self.evidence_ids.move_to_end(evidence_key,)
+
+            while len(self.evidence_ids,) > self.configuration.cache_capacity:
+                self.evidence_ids.popitem(last=False,)
+
         return analysis
 
     def evaluate_move(
         self,
         fen: str,
         move: str,
-        profile: str = "quick",
+        profile: str = "instant",
         history: list[str] | None = None,
     ) -> dict:
         from gambit.game.assessment import assess_move, build_board
@@ -394,6 +460,7 @@ class AnalysisService:
                 fen,
                 move,
                 history,
+                profile=profile,
             ),),
         }
 

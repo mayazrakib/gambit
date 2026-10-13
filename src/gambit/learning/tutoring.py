@@ -1,6 +1,7 @@
 from dataclasses import asdict
+from time import monotonic
 
-from gambit.engine.analysis import AnalysisService
+from gambit.engine.analysis import AnalysisService, compact_position_evidence
 from gambit.engine.client import parse_move
 from gambit.game.assessment import assess_move, build_board
 from gambit.game.features import inspect_features
@@ -8,6 +9,8 @@ from gambit.infrastructure.storage import Store
 from gambit.knowledge.base import Knowledge
 from gambit.learning.openings import OpeningPlans
 from gambit.learning.speech import create_speech_plan, pronounce_move
+
+SPOKEN_OPENING_LIMIT = 3
 
 class Tutor:
     def __init__(
@@ -28,7 +31,11 @@ class Tutor:
         profile: str = "instant",
         history: list[str] | None = None,
         candidates: list[str] | None = None,
+        move: str | None = None,
+        is_compact: bool = True,
     ) -> dict:
+        started = monotonic()
+
         if intent not in ("explain", "hint", "compare", "endgame"):
             raise ValueError("Tutor intent must be explain, hint, compare, or endgame.",)
 
@@ -36,6 +43,20 @@ class Tutor:
             fen,
             history,
         )
+        move_assessment = None
+
+        if move is not None:
+            move_assessment = self.analysis.evaluate_move(
+                fen,
+                move,
+                profile,
+                history,
+            )
+            board.push(parse_move(
+                board,
+                move,
+            ),)
+
         position_fen = board.fen()
 
         if candidates is not None and len(candidates,) > 4:
@@ -52,12 +73,16 @@ class Tutor:
             "voice": "en",
         }
         features = inspect_features(position_fen,)
-        analysis = self.analysis.evaluate(
+        analysis = move_assessment["after"] if move_assessment is not None else self.analysis.evaluate(
             fen,
             profile,
             history,
         )
-        openings = self.knowledge.find_moves(position_fen,)
+        record_limit = SPOKEN_OPENING_LIMIT if is_compact else 100
+        openings = self.knowledge.find_moves(
+            position_fen,
+            limit=record_limit,
+        ) if intent != "hint" else None
         lines = analysis["principal_variations"]
         spoken = []
         directives = []
@@ -69,18 +94,25 @@ class Tutor:
             selected = candidates or [line["moves_uci"][0] for line in lines[:2]]
 
             if len(selected,) < 2:
-                alternatives = self.analysis.evaluate(
-                    fen,
-                    "quick",
-                    history,
-                )["principal_variations"]
-                selected = [line["moves_uci"][0] for line in alternatives[:2]]
+                alternatives = self.analysis.engine.analyze(
+                    board,
+                    min(
+                        2,
+                        board.legal_moves.count(),
+                    ),
+                    getattr(
+                        self.analysis.configuration,
+                        profile + "_nodes",
+                    ),
+                )
+                selected = [line["pv"][0].uci() for line in alternatives[:2]]
 
             comparisons = [asdict(assess_move(
                 self.analysis.engine,
-                fen,
+                board.root().fen(),
                 candidate,
-                history,
+                [entry.uci() for entry in board.move_stack],
+                profile=profile,
             ),) for candidate in selected]
 
         side = "white" if board.turn else "black"
@@ -140,18 +172,40 @@ class Tutor:
             tablebase = self.analysis.tablebases.probe(position_fen,)
 
         evidence = (
-            analysis
+            (compact_position_evidence(analysis,) if is_compact else analysis)
             if intent != "hint"
             else {"id": analysis["id"], "engine": analysis["engine"], "is_solution_hidden": True,}
         )
 
-        return {
+        if is_compact and openings is not None:
+            for name in ("moves", "reached_openings"):
+                records = openings[name]
+                openings[name] = [
+                    {key: value for key, value in record.items() if key != "pgn"}
+                    for record in records[:SPOKEN_OPENING_LIMIT]
+                ]
+
+        if is_compact and move_assessment is not None:
+            move_assessment = {
+                "move": move_assessment["move"],
+                "centipawn_loss": move_assessment["centipawn_loss"],
+                "assessment": move_assessment["assessment"],
+                "before_analysis_id": move_assessment["before"]["id"],
+                "after_analysis_id": move_assessment["after"]["id"],
+            }
+
+        report = {
             "schema_version": 1,
+            "is_compact": is_compact,
+            "move_assessment": move_assessment if intent != "hint" else None,
             "candidate_comparisons": comparisons,
             "position_context": features,
             "engine_evidence": evidence,
             "opening_evidence": openings if intent != "hint" else None,
-            "opening_plan_evidence": OpeningPlans(self.store,).get_plans(position_fen,) if intent != "hint" else None,
+            "opening_plan_evidence": OpeningPlans(self.store,).get_plans(
+                position_fen,
+                record_limit,
+            ) if intent != "hint" else None,
             "tablebase_evidence": tablebase,
             "learning_diagnosis": diagnosis,
             "teaching_plan": {
@@ -167,3 +221,9 @@ class Tutor:
             ),
             "model_instructions": "Use only the supplied facts and legal variations. Distinguish engine preferences, geometric observations, and teaching advice. Do not describe a forcing win unless the evidence establishes it. Keep each spoken turn brief and allow interruptions.",
         }
+        report["elapsed_ms"] = round(
+            (monotonic() - started) * 1000,
+            2,
+        )
+
+        return report

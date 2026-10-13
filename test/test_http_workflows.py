@@ -47,11 +47,20 @@ async def test_http_reconnection_preserves_learning_and_schemas(tmp_path,):
                     read_stream,
                     write_stream,
                 ) as session:
-                    await session.initialize()
+                    initialization = await session.initialize()
+                    assert "profile instant" in initialization.instructions
                     catalog = await session.list_tools()
                     tools_by_name = {tool.name: tool for tool in catalog.tools}
                     assert tools_by_name["assess_candidate_move"].output_schema
                     assert tools_by_name["get_analysis_metrics"].output_schema
+
+                    for name in ("evaluate_position", "evaluate_move", "compare_candidate_moves", "assess_candidate_move", "submit_teaching_move", "submit_tactic_move", "create_tutor_turn"):
+                        assert tools_by_name[name].input_schema["properties"]["profile"]["default"] == "instant"
+
+                    for name in ("analyze_position", "analyze_chessboard", "tutor_move"):
+                        assert tools_by_name[name].input_schema["properties"]["nodes"]["default"] == 12000
+                        assert tools_by_name[name].input_schema["properties"]["multipv"]["default"] == 1
+
                     question = await session.call_tool(
                         "start_teaching_session",
                         {"fen": chess.STARTING_FEN, "learner_id": "http",},
@@ -80,6 +89,15 @@ async def test_http_reconnection_preserves_learning_and_schemas(tmp_path,):
                     )
                     assert not evaluation.is_error
                     assert evaluation.structured_content["schema_version"] == 1
+                    turn = await session.call_tool(
+                        "create_tutor_turn",
+                        {"fen": chess.STARTING_FEN, "move": "e4",},
+                    )
+                    assert not turn.is_error
+                    assert turn.structured_content["is_compact"]
+                    assert turn.structured_content["engine_evidence"]["profile"] == "instant"
+                    assert turn.structured_content["move_assessment"]["move"]["uci"] == "e2e4"
+                    assert turn.structured_content["engine_evidence"]["fen"] == turn.structured_content["speech_plan"]["position_fen"]
     finally:
         process.terminate()
 

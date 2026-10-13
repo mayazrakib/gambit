@@ -33,6 +33,8 @@ class Configuration:
     quick_nodes: int = 100000
     deep_nodes: int = 1000000
     candidate_count: int = 3
+    instant_search_time_ms: int = 150
+    quick_search_time_ms: int = 600
     search_time_ms: int = 5000
     search_depth: int = 64
 
@@ -47,6 +49,8 @@ class Configuration:
             "quick_nodes": (1, 2000000),
             "deep_nodes": (1, 2000000),
             "candidate_count": (1, 5),
+            "instant_search_time_ms": (50, 20000),
+            "quick_search_time_ms": (50, 20000),
             "search_time_ms": (50, 20000),
             "search_depth": (1, 128),
         }
@@ -78,6 +82,24 @@ class Configuration:
                 str,
             ):
                 raise ValueError(f"Configuration {name} must be a string.",)
+
+    def get_search_time_ms(
+        self,
+        nodes: int,
+    ) -> int:
+        if nodes <= self.instant_nodes:
+            return min(
+                self.instant_search_time_ms,
+                self.search_time_ms,
+            )
+
+        if nodes <= self.quick_nodes:
+            return min(
+                self.quick_search_time_ms,
+                self.search_time_ms,
+            )
+
+        return self.search_time_ms
 
 def load_configuration() -> Configuration:
     load_package_environment()

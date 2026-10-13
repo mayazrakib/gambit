@@ -17,8 +17,8 @@ import chess
 from gambit.engine.uci import EngineLine, get_uci_integer, parse_analysis_line
 from gambit.infrastructure.configuration import Configuration
 
-DEFAULT_NODES = 100_000
-DEFAULT_MULTIPV = 3
+DEFAULT_NODES = 12_000
+DEFAULT_MULTIPV = 1
 MAX_NODES = 2_000_000
 MAX_MULTIPV = 5
 ENGINE_RESPONSE_TIMEOUT_SECONDS = 30
@@ -44,12 +44,30 @@ async def execute_engine_request[
     if not ENGINE_REQUEST_SLOTS.acquire(blocking=False,):
         raise RuntimeError("The MCP operation queue is full. Retry after active work completes.",)
 
+    submitted = monotonic()
+
+    def run_operation() -> Result:
+        started = monotonic()
+
+        try:
+            return operation(
+                *args,
+                **kwargs,
+            )
+        finally:
+            logging.getLogger(__name__,).info(
+                "MCP operation %s completed. Queue: %.2f ms. Execution: %.2f ms.",
+                getattr(
+                    operation,
+                    "__qualname__",
+                    type(operation,).__name__,
+                ),
+                (started - submitted) * 1000,
+                (monotonic() - started) * 1000,
+            )
+
     try:
-        future = ENGINE_REQUEST_EXECUTOR.submit(
-            operation,
-            *args,
-            **kwargs,
-        )
+        future = ENGINE_REQUEST_EXECUTOR.submit(run_operation,)
     except RuntimeError:
         ENGINE_REQUEST_SLOTS.release()
 
@@ -58,10 +76,7 @@ async def execute_engine_request[
     future.add_done_callback(lambda completed: ENGINE_REQUEST_SLOTS.release(),)
 
     try:
-        while not future.done():
-            await asyncio.sleep(0.01,)
-
-        return future.result()
+        return await asyncio.wrap_future(future,)
     finally:
         future.cancel()
 
@@ -298,7 +313,8 @@ class StockfishClient:
                 root = board.root()
                 history = " ".join((move.uci() for move in board.move_stack),)
                 self.send(f"position fen {root.fen()} moves {history}",)
-                search_command = f"go nodes {nodes} movetime {self.configuration.search_time_ms} depth {self.configuration.search_depth}"
+                search_time_ms = self.configuration.get_search_time_ms(nodes,)
+                search_command = f"go nodes {nodes} movetime {search_time_ms} depth {self.configuration.search_depth}"
 
                 if root_moves:
                     search_command += " searchmoves " + " ".join(root_moves,)

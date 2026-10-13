@@ -103,12 +103,13 @@ class Knowledge:
         fen: str,
         is_repertoire: bool = False,
         offset: int = 0,
+        limit: int = 100,
     ) -> dict:
         board = parse_board(fen,)
         collection = "repertoire" if is_repertoire else "opening"
         records = self.store.list_records(
             collection,
-            100,
+            limit,
             offset,
             get_position_key(board,),
         )
@@ -118,11 +119,11 @@ class Knowledge:
             "moves": records,
             "reached_openings": self.store.list_records(
                 "study",
-                100,
+                limit,
                 offset,
                 get_position_key(board,),
             ),
-            "next_offset": offset + 100 if len(records,) == 100 else None,
+            "next_offset": offset + limit if len(records,) == limit else None,
         }
 
     def import_opening_tsv(

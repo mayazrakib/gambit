@@ -2,8 +2,10 @@ import argparse
 import asyncio
 import atexit
 import json
+import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Any, Literal
 
@@ -152,10 +154,23 @@ def get_position_analysis(
 stockfish = EnginePool(load_configuration(),)
 atexit.register(stockfish.close,)
 
+@asynccontextmanager
+async def initialize_runtime(server: MCPServer,):
+    try:
+        await asyncio.to_thread(stockfish.warm_up,)
+    except (OSError, RuntimeError):
+        logging.getLogger(__name__,).exception("Engine warmup failed. Rules tools remain available; analysis will retry engine startup.",)
+
+    await asyncio.to_thread(runtime_owner.get_runtime,)
+
+    yield
+
 mcp = GambitMcpServer(
     name="gambit",
     title="Gambit Chess Tutor",
     description="Analyze chess positions and provide move-by-move tutoring support.",
+    instructions="For live tutoring, use one create_tutor_turn call with profile instant and is_compact true. Supply the learner's move in that call. Reuse matching evidence for follow-up explanations and answer general chess concepts without tools. Speak from preliminary evidence immediately; request deeper confirmation only when needed. Preserve move history, White-relative scores on new tools, and side-to-move scores on legacy tools. Never treat shallow analysis as proof of a forcing win.",
+    lifespan=initialize_runtime,
 )
 
 @mcp.tool(description="Inspect a FEN position without engine analysis.",)
@@ -461,7 +476,7 @@ def main() -> None:
 
     mcp.run(transport="stdio",)
 
-register_tools(
+runtime_owner = register_tools(
     mcp,
     stockfish,
 )

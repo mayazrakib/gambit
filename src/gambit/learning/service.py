@@ -125,7 +125,7 @@ class Learning:
         if level > 1:
             analysis = self.analysis.evaluate(
                 session["root_fen"],
-                "quick",
+                "instant",
                 session["history"],
             )
             line = analysis["principal_variations"][0]
@@ -178,6 +178,7 @@ class Learning:
         self,
         session_id: str,
         move: str,
+        profile: str = "instant",
     ) -> TeachingFeedback:
         session = self.store.get(
             "teaching",
@@ -192,6 +193,7 @@ class Learning:
             session["root_fen"],
             move,
             session["history"],
+            profile=profile,
         )
         is_accepted = assessment.classification == "acceptable"
         is_conclusive = assessment.classification != "uncertain"
@@ -234,7 +236,7 @@ class Learning:
                 progress,
             )
             current.update(
-                status="completed",
+                status="completed" if is_conclusive else "active",
                 assessment=asdict(assessment,),
             )
             self.store.put(
@@ -244,7 +246,7 @@ class Learning:
             )
 
         variation = ", ".join(assessment.verified.variation_san[:6],)
-        explanation = f"The verified candidate line is {variation}. Assessment: {assessment.classification}."
+        explanation = f"The candidate line is {variation}. Evidence: {assessment.evidence_status}. Assessment: {assessment.classification}."
 
         if assessment.verified.mate_change:
             explanation += f" Mate evidence: {assessment.verified.mate_change}."
@@ -257,7 +259,9 @@ class Learning:
             is_accepted,
             assessment,
             explanation,
-            "Compare the resulting position with your prediction. Which reply or positional change did you miss?",
+            "Compare the resulting position with your prediction. Which reply or positional change did you miss?"
+            if is_conclusive
+            else "This search is inconclusive. Would you like deeper confirmation before recording a grade?",
             progress["due_at"],
         )
 

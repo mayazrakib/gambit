@@ -17,9 +17,13 @@ Set `STOCKFISH_PATH` to choose the engine, `GAMBIT_DATABASE` to choose the datab
 
 ## Chess tools and evidence
 
-The MCP host discovers tool schemas from the server. A typical session can call `inspect_position` or `evaluate_position`, compare moves with `assess_candidate_move`, and build a grounded explanation with `create_tutor_turn`. `parse_game`, `analyze_game`, and `review_game` handle Portable Game Notation (PGN) games. Whole-game jobs can be started, polled, cancelled, and resumed through the analysis-job tools.
+The MCP host discovers tool schemas from the server. For live tutoring, use one `create_tutor_turn` call per new position. Its default `instant` profile returns compact evidence and speech guidance; supply `move` to assess a learner's move in the same call. Reuse matching evidence for follow-up explanations. Set `is_compact` to `false` or retrieve the analysis ID with `get_analysis` when a full report is needed. The repository's [chess tutoring skill](.agents/skills/chess_tutor/SKILL.md) defines this workflow.
+
+Interactive evaluation, candidate assessment, and teaching submissions default to `instant`. Single-position legacy tools default to 12,000 nodes and one variation. Request `deep` explicitly for two-budget candidate confirmation. Preliminary teaching feedback does not count as confirmed progress; an inconclusive session stays active for deeper resubmission. `parse_game`, `analyze_game`, and `review_game` handle Portable Game Notation (PGN) games. Whole-game jobs retain their review budgets and can be started, polled, cancelled, and resumed.
 
 The `instant`, `quick`, and `deep` profiles default to 12,000, 100,000, and 1,000,000 search nodes. These are work budgets, not response-time promises. Worker queueing, CPU load, and position complexity affect latency. New evaluation tools report scores from White's perspective; legacy `analyze_position` and `tutor_move` retain side-to-move scores. Mate results are separate from centipawn scores.
+
+Engine startup runs during server initialization. Searches at or below the instant and quick node budgets also have default engine time limits of 150 and 600 milliseconds, capped by `search_time_ms`. These limits exclude startup, queueing, transport, and audio. Repeated evaluations reuse stored evidence with matching profile and history. Server logs report operation queue and execution times; ChatGPT controls Voice scheduling and delivery.
 
 Supply the initial Forsyth-Edwards notation (FEN) position and move history when repetition matters. A FEN alone cannot establish earlier repetitions. Review labels describe Gambit's policy, not Stockfish's native labels or a rating estimate. Candidate comparisons can return `uncertain` when searches disagree.
 

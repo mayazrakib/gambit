@@ -1,3 +1,6 @@
+from copy import deepcopy
+from functools import lru_cache
+
 import chess
 
 from gambit.engine.client import parse_board
@@ -10,10 +13,16 @@ PIECE_POINTS = {
     chess.QUEEN: 9,
     chess.KING: 0,
 }
+FEATURE_CACHE_CAPACITY = 512
 
 def inspect_features(fen: str,) -> dict:
+    return deepcopy(calculate_features(fen,),)
+
+@lru_cache(maxsize=FEATURE_CACHE_CAPACITY,)
+def calculate_features(fen: str,) -> dict:
     board = parse_board(fen,)
     sides = {}
+    pieces = board.piece_map()
 
     for color, name in ((chess.WHITE, "white"), (chess.BLACK, "black")):
         pawns = board.pieces(
@@ -49,7 +58,7 @@ def inspect_features(fen: str,) -> dict:
         undefended = []
         forks = []
 
-        for square, piece in board.piece_map().items():
+        for square, piece in pieces.items():
             if piece.color != color:
                 continue
 
@@ -82,7 +91,7 @@ def inspect_features(fen: str,) -> dict:
 
         sides[name] = {
             "material_points": sum((PIECE_POINTS[piece.piece_type]
-                for piece in board.piece_map().values()
+                for piece in pieces.values()
                 if piece.color == color),),
             "isolated_pawns": isolated,
             "passed_pawns": passed,

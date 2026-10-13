@@ -1,9 +1,10 @@
+import asyncio
 import atexit
 import threading
 from dataclasses import asdict
 
 from gambit.api.contracts import PositionEvidence
-from gambit.engine.analysis import AnalysisService, EnginePool
+from gambit.engine.analysis import AnalysisService, EnginePool, compact_position_evidence
 from gambit.engine.client import execute_engine_request
 from gambit.game.features import inspect_features
 from gambit.infrastructure.configuration import load_configuration
@@ -80,7 +81,7 @@ class RuntimeOwner:
 def register_tools(
     server,
     engine: EnginePool | None = None,
-) -> None:
+) -> RuntimeOwner:
     owner = RuntimeOwner(engine,)
     from gambit.server.extended_tools import register_extended_tools
 
@@ -117,30 +118,34 @@ def register_tools(
             "model": "The MCP host supplies the language model.",
         }
 
-    @server.tool(description="Analyze a position with White-relative scores, immutable evidence, and optional move history.",)
+    @server.tool(description="Return instant preliminary position evidence by default. Scores are White-relative. Use quick or deep only when needed; get_analysis retrieves full evidence.",)
     async def evaluate_position(
         fen: str,
-        profile: str = "quick",
+        profile: str = "instant",
         moves: list[str] | None = None,
+        is_compact: bool = True,
     ) -> PositionEvidence:
-        return await execute_engine_request(
+        evidence = await execute_engine_request(
             owner.get_runtime().analysis.evaluate,
             fen,
             profile,
             moves,
         )
 
+        return compact_position_evidence(evidence,) if is_compact else evidence
+
     @server.tool(description="Compare a legal move against engine analysis before and after it. Scores are White-relative.",)
     async def evaluate_move(
         fen: str,
         move: str,
-        profile: str = "quick",
+        profile: str = "instant",
         history: list[str] | None = None,
+        is_compact: bool = True,
     ) -> dict[
         str,
         object,
     ]:
-        return await execute_engine_request(
+        result = await execute_engine_request(
             owner.get_runtime().analysis.evaluate_move,
             fen,
             move,
@@ -148,12 +153,19 @@ def register_tools(
             history,
         )
 
+        if is_compact:
+            result["before"] = compact_position_evidence(result["before"],)
+            result["after"] = compact_position_evidence(result["after"],)
+
+        return result
+
     @server.tool(description="Analyze and compare up to eight candidate moves under the same search profile.",)
     async def compare_candidate_moves(
         fen: str,
         moves: list[str],
-        profile: str = "quick",
+        profile: str = "instant",
         history: list[str] | None = None,
+        is_compact: bool = True,
     ) -> dict[
         str,
         object,
@@ -161,15 +173,16 @@ def register_tools(
         if not 1 <= len(moves,) <= 8:
             raise ValueError("Compare between one and eight candidate moves.",)
 
-        comparisons = []
-
-        for move in moves:
-            comparisons.append(await evaluate_move(
+        comparisons = await asyncio.gather(*(
+            evaluate_move(
                 fen,
                 move,
                 profile,
                 history,
-            ),)
+                is_compact,
+            )
+            for move in moves
+        ),)
 
         return {"comparisons": comparisons,}
 
@@ -522,6 +535,7 @@ def register_tools(
     async def submit_tactic_move(
         session_id: str,
         move: str,
+        profile: str = "instant",
     ) -> dict[
         str,
         object,
@@ -530,6 +544,7 @@ def register_tools(
             owner.get_runtime().training.submit_tactic_move,
             session_id,
             move,
+            profile,
         )
 
     @server.tool(description="Record an explicitly reported training outcome with idempotent attempt identity.",)
@@ -575,7 +590,7 @@ def register_tools(
             step,
         )
 
-    @server.tool(description="Create a grounded tutor turn with engine evidence, teaching guidance, board actions, and speech segments.",)
+    @server.tool(description="Use this single call for live chess tutoring. Returns instant preliminary evidence, a short speech plan, and board actions by default. Supply move to assess a learner's move in the same call. Reuse matching evidence for follow-ups; request deep only for confirmation.",)
     async def create_tutor_turn(
         fen: str,
         learner_id: str = "default",
@@ -583,6 +598,8 @@ def register_tools(
         profile: str = "instant",
         history: list[str] | None = None,
         candidates: list[str] | None = None,
+        move: str | None = None,
+        is_compact: bool = True,
     ) -> dict[
         str,
         object,
@@ -595,6 +612,8 @@ def register_tools(
             profile,
             history,
             candidates,
+            move,
+            is_compact,
         )
 
     @server.tool(description="Create interruptible speech segments and legal SAN/UCI pronunciations.",)
@@ -647,4 +666,6 @@ def register_tools(
         fen: str,
         learner_id: str = "default",
     ) -> str:
-        return f"Tutor learner {learner_id} at FEN {fen}. Call create_tutor_turn. Use only its evidence for chess claims. Preserve score perspective and provenance. Ask one short question at a time. Validate moves before discussing them. For hints, do not reveal the solution. Use speech segments and board directives only for the matching position."
+        return f"Tutor learner {learner_id} at FEN {fen}. Use one create_tutor_turn call with profile instant and is_compact true per new position. Supply move in that call when assessing a learner's move. Reuse matching evidence for repetitions and follow-up explanations. Answer general chess concepts without an unnecessary tool call. Speak briefly, then ask one question. Use only supplied evidence for position-specific claims, preserve score perspective and provenance, and identify preliminary analysis. Do not wait for background deep analysis or poll before speaking. Request deep only for confirmation. For hints, do not reveal the solution. Use board directives only for the matching position."
+
+    return owner

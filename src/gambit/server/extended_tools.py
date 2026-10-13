@@ -25,11 +25,12 @@ def register_extended_tools(
     server,
     owner: "RuntimeOwner",
 ) -> None:
-    @server.tool(description="Verify a candidate against unrestricted and forced-root searches at two budgets, retaining full supplied history.",)
+    @server.tool(description="Assess a candidate with instant preliminary evidence by default. Use deep for two-budget confirmation. Retain supplied history.",)
     async def assess_candidate_move(
         fen: str,
         move: str,
         history: list[str] | None = None,
+        profile: str = "instant",
     ) -> MoveAssessment:
         return await execute_engine_request(
             assess_move,
@@ -37,6 +38,7 @@ def register_extended_tools(
             fen,
             move,
             history,
+            profile=profile,
         )
 
     @server.tool(description="Start a solution-hidden teaching cycle with a concept-specific learning objective.",)
@@ -66,11 +68,13 @@ def register_extended_tools(
     async def submit_teaching_move(
         session_id: str,
         move: str,
+        profile: str = "instant",
     ) -> TeachingFeedback:
         return await execute_engine_request(
             owner.get_runtime().learning.submit_move,
             session_id,
             move,
+            profile,
         )
 
     @server.tool(description="Return concept-specific attempts, independent successes, and due review dates.",)

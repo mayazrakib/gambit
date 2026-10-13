@@ -53,6 +53,7 @@ def test_root_assessment_confirms_loss_without_fabricated_confidence():
         CandidateEngine(),
         chess.STARTING_FEN,
         "a3",
+        profile="deep",
     )
     assert assessment.classification == "serious mistake"
     assert assessment.verified.centipawn_loss == 220
@@ -92,6 +93,7 @@ def test_stability_requires_a_larger_verification_budget():
         engine,
         chess.STARTING_FEN,
         "e4",
+        profile="deep",
     )
     assert assessment.evidence_status == "preliminary"
     assert assessment.classification == "uncertain"
@@ -112,6 +114,7 @@ def test_learning_hides_answers_and_tracks_independent_progress(database,):
     feedback = learning.submit_move(
         question.session_id,
         "e4",
+        "deep",
     )
     assert feedback.is_accepted
     progress = learning.get_progress("default",)[0]
@@ -490,6 +493,7 @@ def test_unstable_assessment_does_not_grade_a_move_as_wrong():
         UnstableEngine(),
         chess.STARTING_FEN,
         "a3",
+        profile="deep",
     )
     assert assessment.evidence_status == "unstable"
     assert assessment.classification == "uncertain"
@@ -536,6 +540,7 @@ def test_puzzle_alternative_does_not_receive_source_mastery_credit(database,):
     response = training.submit_tactic_move(
         "session",
         "e4",
+        "deep",
     )
     assert response["is_correct"]
     assert not response["is_objective_verified"]

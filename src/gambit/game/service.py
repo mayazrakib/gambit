@@ -9,6 +9,8 @@ import chess
 import chess.pgn
 
 from gambit.engine.client import (
+    DEFAULT_MULTIPV,
+    DEFAULT_NODES,
     ENGINE_HASH_MB,
     ENGINE_THREADS,
     StockfishClient,
@@ -113,8 +115,8 @@ class PrincipalVariation:
 @dataclass(frozen=True,)
 class PositionAnalysisRequest:
     fen: str
-    nodes: int = 100_000
-    multipv: int = 3
+    nodes: int = DEFAULT_NODES
+    multipv: int = DEFAULT_MULTIPV
 
 @dataclass(frozen=True,)
 class PositionAnalysis:

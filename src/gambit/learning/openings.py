@@ -124,6 +124,7 @@ class OpeningPlans:
     def get_plans(
         self,
         fen: str,
+        limit: int = 100,
     ) -> OpeningPlanReport:
         key = get_position_key(parse_board(fen,),)
 
@@ -131,13 +132,13 @@ class OpeningPlans:
             "schema_version": 1,
             "plans": self.store.list_records(
                 "opening_plan",
-                100,
+                limit,
                 0,
                 key,
             ),
             "practical_statistics": self.store.list_records(
                 "observation",
-                100,
+                limit,
                 0,
                 key,
             ),

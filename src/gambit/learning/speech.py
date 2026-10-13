@@ -128,14 +128,14 @@ class Speech:
                     temporary.unlink(missing_ok=True,)
                     raise RuntimeError("Local speech synthesis failed.",) from exception
 
-            cached_files = sorted(
-                self.directory.glob("*.wav",),
-                key=lambda path: path.stat().st_mtime,
-            )
+                cached_files = sorted(
+                    self.directory.glob("*.wav",),
+                    key=lambda path: path.stat().st_mtime,
+                )
 
-            for old_file in cached_files[:-128]:
-                if old_file != destination:
-                    old_file.unlink()
+                for old_file in cached_files[:-128]:
+                    if old_file != destination:
+                        old_file.unlink()
 
         return {
             "audio_uri": destination.as_uri(),

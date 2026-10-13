@@ -13,5 +13,7 @@ instant_nodes = 12000
 quick_nodes = 100000
 deep_nodes = 1000000
 candidate_count = 3
+instant_search_time_ms = 150
+quick_search_time_ms = 600
 search_time_ms = 5000
 search_depth = 64

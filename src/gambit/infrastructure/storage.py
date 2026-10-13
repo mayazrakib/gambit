@@ -75,8 +75,8 @@ class Store:
             )
         """,)
         self.connection.execute("""
-            CREATE INDEX IF NOT EXISTS record_position
-            ON record (collection, json_extract(payload, '$.position_key'))
+            CREATE INDEX IF NOT EXISTS record_position_order
+            ON record (collection, json_extract(payload, '$.position_key'), id)
         """,)
         self.connection.commit()
 
@@ -106,7 +106,7 @@ class Store:
             existing = self.get(
                 collection,
                 record_id,
-            )
+            ) if is_immutable else None
 
             if is_immutable and existing is not None:
                 if existing != json.loads(serialized,):

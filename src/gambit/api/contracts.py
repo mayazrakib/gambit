@@ -30,6 +30,7 @@ class VariationEvidence(TypedDict):
     engine_time_ms: int | None
 
 class PositionEvidence(VersionedResponse):
+    is_compact: NotRequired[bool]
     id: str
     fen: str
     evaluation: EngineScore

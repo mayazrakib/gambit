@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 SERIOUS_LOSS_CP = 150
 ACCEPTABLE_LOSS_CP = 30
+SPOKEN_VARIATION_PLIES = 4
+FULL_VARIATION_PLIES = 24
 
 @dataclass(frozen=True,)
 class CandidateEvidence:
@@ -106,10 +108,11 @@ def create_evidence(
     board: chess.Board,
     best: EngineLine,
     candidate: EngineLine,
+    max_variation_plies: int = FULL_VARIATION_PLIES,
 ) -> CandidateEvidence:
     variation = get_variation(
         board,
-        candidate["pv"][:24],
+        candidate["pv"][:max_variation_plies],
     )
 
     if not variation:
@@ -137,7 +140,7 @@ def create_evidence(
         replay.push(move,)
 
         if replay.is_checkmate():
-            observations.append(f"{entry['san']} ends the verified line in checkmate.",)
+            observations.append(f"{entry['san']} ends the shown line in checkmate.",)
         elif replay.is_check():
             observations.append(f"{entry['san']} forces a response to check.",)
 
@@ -173,7 +176,12 @@ def assess_move(
     move: str,
     history: list[str] | None = None,
     cancellation: Event | None = None,
+    *,
+    profile: str = "instant",
 ) -> MoveAssessment:
+    if profile not in ("instant", "quick", "deep"):
+        raise ValueError("Analysis profile must be instant, quick, or deep.",)
+
     board = build_board(
         fen,
         history,
@@ -188,7 +196,16 @@ def assess_move(
     )
     stages = []
 
-    for nodes in (engine.configuration.quick_nodes, engine.configuration.deep_nodes):
+    budgets = (
+        (engine.configuration.quick_nodes, engine.configuration.deep_nodes)
+        if profile == "deep"
+        else (getattr(
+            engine.configuration,
+            profile + "_nodes",
+        ),)
+    )
+
+    for nodes in budgets:
         best = engine.analyze(
             board,
             1,
@@ -214,9 +231,10 @@ def assess_move(
             selected,
         )[2]),)
 
-    preliminary, verified = stages
+    preliminary = stages[0]
+    verified = stages[-1]
     is_stable = preliminary[2] == verified[2] and preliminary[0]["pv"][0] == verified[0]["pv"][0]
-    has_deeper_budget = engine.configuration.deep_nodes > engine.configuration.quick_nodes
+    has_deeper_budget = len(budgets,) > 1 and budgets[-1] > budgets[0]
     has_more_work = all((verified[index].get(
         "actual_nodes",
         0,
@@ -237,6 +255,20 @@ def assess_move(
     if not has_deeper_budget or not has_more_work:
         status = "preliminary"
 
+    variation_plies = FULL_VARIATION_PLIES if profile == "deep" else SPOKEN_VARIATION_PLIES
+    preliminary_evidence = create_evidence(
+        board,
+        preliminary[0],
+        preliminary[1],
+        variation_plies,
+    )
+    verified_evidence = preliminary_evidence if len(stages,) == 1 else create_evidence(
+        board,
+        verified[0],
+        verified[1],
+        variation_plies,
+    )
+
     return MoveAssessment(
         1,
         board.fen(),
@@ -244,16 +276,10 @@ def assess_move(
         history or [],
         status,
         verified[2] if status == "deeper confirmation" else "uncertain",
-        create_evidence(
-            board,
-            preliminary[0],
-            preliminary[1],
-        ),
-        create_evidence(
-            board,
-            verified[0],
-            verified[1],
-        ),
+        preliminary_evidence,
+        verified_evidence,
         verified[0]["pv"][0].uci(),
-        "Both searches use the same root and supplied history. Agreement is not a calibrated confidence probability or proof of optimality.",
+        "Both searches use the same root and supplied history. Agreement is not a calibrated confidence probability or proof of optimality."
+        if profile == "deep"
+        else "This is preliminary search evidence from the supplied root and history. It does not establish a confirmed grade or proof of optimality.",
     )

@@ -288,6 +288,7 @@ class Training:
         self,
         session_id: str,
         move: str,
+        profile: str = "instant",
     ) -> dict:
         snapshot = self.store.get(
             "session",
@@ -314,6 +315,7 @@ class Training:
                     self.analysis.engine,
                     snapshot["fen"],
                     move,
+                    profile=profile,
                 )
 
                 with self.store.lock:
