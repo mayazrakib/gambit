@@ -8,6 +8,9 @@ import chess.syzygy
 
 from gambit.knowledge.base import probe_tablebase
 
+MAX_CHECKSUM_MANIFEST_BYTES = 8 * 1024 * 1024
+MAX_DIAGNOSTIC_FILES = 1000
+
 @dataclass(frozen=True,)
 class TablebaseDiagnostics:
     schema_version: int
@@ -85,7 +88,7 @@ class Tablebases:
             missing,
             len(wdl,),
             len(dtz,),
-            sorted(wdl ^ dtz,)[:1000],
+            sorted(wdl ^ dtz,)[:MAX_DIAGNOSTIC_FILES],
             bool(wdl,) and wdl == dtz and not missing,
             "Matching file pairs do not prove complete material coverage or file integrity. Captures and promotions can require additional tables. Unpaired names are limited to 1000 entries.",
         )
@@ -96,7 +99,7 @@ class Tablebases:
     ) -> dict:
         manifest = Path(manifest_path,).expanduser()
 
-        if manifest.stat().st_size > 8 * 1024 * 1024:
+        if manifest.stat().st_size > MAX_CHECKSUM_MANIFEST_BYTES:
             raise ValueError("A checksum manifest must not exceed 8 MiB.",)
 
         verified = 0

@@ -5,6 +5,9 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
+PACKAGE_DIRECTORY = Path(__file__,).resolve().parents[3]
+DEFAULT_RUNTIME_DIRECTORY = str(PACKAGE_DIRECTORY / "runtime",)
+
 def load_package_environment() -> None:
     package_directory = Path(__file__,).resolve().parents[3]
     environment_path = package_directory / ".env"
@@ -18,14 +21,15 @@ def load_package_environment() -> None:
 
 @dataclass(frozen=True,)
 class Configuration:
-    database_path: str = "~/.local/share/gambit/gambit.sqlite3"
+    database_path: str = str(Path(DEFAULT_RUNTIME_DIRECTORY,) / "gambit.sqlite3",)
+    runtime_directory: str = DEFAULT_RUNTIME_DIRECTORY
     engine_path: str = "stockfish"
     worker_count: int = 2
     threads_per_worker: int = 1
     hash_mb_per_worker: int = 64
     cache_capacity: int = 512
     is_reproducible: bool = False
-    syzygy_path: str = ""
+    syzygy_path: str = str(Path(DEFAULT_RUNTIME_DIRECTORY,) / "syzygy",)
     speech_executable: str = "espeak-ng"
     speech_directory: str = "~/.cache/gambit/speech"
     max_jobs: int = 16
@@ -37,6 +41,8 @@ class Configuration:
     quick_search_time_ms: int = 600
     search_time_ms: int = 5000
     search_depth: int = 64
+    should_refine_automatically: bool = True
+    prefetch_branches: int = 2
 
     def __post_init__(self,) -> None:
         limits = {
@@ -53,6 +59,7 @@ class Configuration:
             "quick_search_time_ms": (50, 20000),
             "search_time_ms": (50, 20000),
             "search_depth": (1, 128),
+            "prefetch_branches": (0, 2),
         }
 
         for name, bounds in limits.items():
@@ -67,8 +74,12 @@ class Configuration:
         if type(self.is_reproducible,) is not bool:
             raise ValueError("Configuration is_reproducible must be a boolean.",)
 
+        if type(self.should_refine_automatically,) is not bool:
+            raise ValueError("Configuration should_refine_automatically must be a boolean.",)
+
         for name in (
             "database_path",
+            "runtime_directory",
             "engine_path",
             "syzygy_path",
             "speech_executable",
@@ -121,5 +132,15 @@ def load_configuration() -> Configuration:
 
     if os.environ.get("GAMBIT_DATABASE",):
         settings["database_path"] = os.environ["GAMBIT_DATABASE"]
+
+    if os.environ.get("GAMBIT_RUNTIME_DIRECTORY",):
+        settings["runtime_directory"] = os.environ["GAMBIT_RUNTIME_DIRECTORY"]
+
+    if "runtime_directory" in settings:
+        if "database_path" not in settings:
+            settings["database_path"] = str(Path(settings["runtime_directory"],) / "gambit.sqlite3",)
+
+        if "syzygy_path" not in settings:
+            settings["syzygy_path"] = str(Path(settings["runtime_directory"],) / "syzygy",)
 
     return Configuration(**settings,)

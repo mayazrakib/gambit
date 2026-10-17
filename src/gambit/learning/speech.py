@@ -54,6 +54,7 @@ def create_speech_plan(
             board,
             notation,
         )
+
         pronunciations.append({
             "notation": board.san(move,),
             "spoken": pronounce_move(
@@ -61,6 +62,7 @@ def create_speech_plan(
                 move,
             ),
         },)
+
         board.push(move,)
 
     return {
@@ -123,6 +125,7 @@ class Speech:
                         timeout=30,
                         check=True,
                     )
+
                     temporary.replace(destination,)
                 except (subprocess.SubprocessError, OSError) as exception:
                     temporary.unlink(missing_ok=True,)

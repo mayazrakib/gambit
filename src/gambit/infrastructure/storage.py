@@ -1,10 +1,13 @@
 import json
 import sqlite3
 import threading
-from contextlib import closing
+from collections.abc import Callable
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
+
+DEFAULT_RUNTIME_DIRECTORY = Path(__file__,).resolve().parents[3] / "runtime"
 
 Collection = Literal[
     "analysis",
@@ -22,7 +25,12 @@ Collection = Literal[
     "teaching",
     "opening_plan",
     "observation",
+    "tutor_session",
+    "practice",
+    "learning_event",
+    "exercise",
 ]
+
 COLLECTIONS = {
     "analysis",
     "attempt",
@@ -39,12 +47,17 @@ COLLECTIONS = {
     "teaching",
     "opening_plan",
     "observation",
+    "tutor_session",
+    "practice",
+    "learning_event",
+    "exercise",
 }
 
 class Store:
     def __init__(
         self,
         database_path: str,
+        runtime_directory: str | None = None,
     ) -> None:
         path = Path(database_path,).expanduser()
 
@@ -55,12 +68,24 @@ class Store:
             )
 
         self.lock = threading.RLock()
+        self.capacity = None
+        capacity_directory = Path(runtime_directory,).resolve() if runtime_directory else DEFAULT_RUNTIME_DIRECTORY
+
+        if database_path != ":memory:" and path.resolve().is_relative_to(capacity_directory,):
+            from gambit.infrastructure.data_capacity import RuntimeCapacity
+
+            self.capacity = RuntimeCapacity(capacity_directory,)
+
+        reservation = self.capacity.reserve_bytes(1_048_576,) if self.capacity else None
+
         self.connection = sqlite3.connect(
             str(path,),
             check_same_thread=False,
         )
+
         self.connection.execute("PRAGMA journal_mode = WAL",)
         self.connection.execute("PRAGMA busy_timeout = 5000",)
+
         self.connection.execute("""
             CREATE TABLE IF NOT EXISTS record (
                 id TEXT NOT NULL,
@@ -74,11 +99,119 @@ class Store:
                 PRIMARY KEY (collection, id)
             )
         """,)
+
         self.connection.execute("""
             CREATE INDEX IF NOT EXISTS record_position_order
             ON record (collection, json_extract(payload, '$.position_key'), id)
         """,)
+
+        self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS analysis_cache (
+                fingerprint TEXT PRIMARY KEY,
+                analysis_id TEXT NOT NULL,
+
+                system_created_at TEXT NOT NULL,
+                system_updated_at TEXT NOT NULL
+            )
+        """,)
+
+        self.connection.execute("""
+            CREATE INDEX IF NOT EXISTS record_learner_order
+            ON record (
+                collection, json_extract(payload, '$.learner_id'), system_created_at, id
+            )
+        """,)
+
         self.connection.commit()
+
+        if reservation is not None:
+            self.capacity.release_bytes(reservation,)
+
+    @contextmanager
+    def acquire_write(self,):
+        with self.lock:
+            if self.capacity is None:
+                with self.connection:
+                    self.connection.execute("BEGIN IMMEDIATE",)
+
+                    yield
+            else:
+                with self.capacity.database_write(self.connection,):
+                    self.connection.execute("BEGIN IMMEDIATE",)
+
+                    yield
+
+    def get_analysis_cache(
+        self,
+        fingerprint: str,
+    ) -> dict | None:
+        with self.lock:
+            row = self.connection.execute(
+                """
+                    SELECT record.payload FROM analysis_cache
+                    JOIN record ON record.collection = 'analysis'
+                        AND record.id = analysis_cache.analysis_id
+
+                    WHERE analysis_cache.fingerprint = ?
+                """,
+                (fingerprint,),
+            ).fetchone()
+
+        return json.loads(row[0],) if row else None
+
+    def put_analysis_cache(
+        self,
+        fingerprint: str,
+        payload: dict,
+        *,
+        before_commit: Callable[
+            [],
+            None,
+        ] | None = None,
+    ) -> dict:
+        if not fingerprint or not payload.get("id",):
+            raise ValueError("Cached analysis requires a fingerprint and evidence identity.",)
+
+        serialized = json.dumps(
+            payload,
+            allow_nan=False,
+            sort_keys=True,
+        )
+
+        timestamp = datetime.now(UTC,).isoformat()
+
+        with self.acquire_write():
+            if before_commit is not None:
+                before_commit()
+
+            cached = self.get_analysis_cache(fingerprint,)
+
+            if cached is not None:
+                return cached
+
+            self.connection.execute(
+                """
+                    INSERT INTO record (
+                        id, collection, payload, system_created_at, system_updated_at
+                    ) VALUES (?, 'analysis', ?, ?, ?)
+                """,
+                (payload["id"], serialized, timestamp, timestamp),
+            )
+
+            self.connection.execute(
+                """
+                    INSERT INTO analysis_cache (
+                        fingerprint, analysis_id, system_created_at, system_updated_at
+                    ) VALUES (?, ?, ?, ?)
+
+                    ON CONFLICT (fingerprint) DO UPDATE SET
+                        analysis_id = excluded.analysis_id,
+                        system_updated_at = excluded.system_updated_at
+                """,
+                (fingerprint, payload["id"], timestamp, timestamp),
+            )
+
+        return payload
 
     def close(self,) -> None:
         with self.lock:
@@ -96,13 +229,14 @@ class Store:
             raise ValueError("Invalid record collection or identifier.",)
 
         timestamp = datetime.now(UTC,).isoformat()
+
         serialized = json.dumps(
             payload,
             allow_nan=False,
             sort_keys=True,
         )
 
-        with self.lock, self.connection:
+        with self.acquire_write():
             existing = self.get(
                 collection,
                 record_id,
@@ -167,11 +301,52 @@ class Store:
                 sort_keys=True,
             ), timestamp, timestamp),)
 
-        with self.lock, self.connection:
+        with self.acquire_write():
             self.connection.executemany(
                 """
                     INSERT INTO record (id, collection, payload, system_created_at, system_updated_at)
                     VALUES (?, ?, ?, ?, ?)
+
+                    ON CONFLICT (collection, id) DO UPDATE SET
+                        payload = excluded.payload,
+                        system_updated_at = excluded.system_updated_at
+                """,
+                rows,
+            )
+
+    def put_records_atomic(
+        self,
+        records: list[tuple[
+            str,
+            str,
+            dict,
+        ]],
+    ) -> None:
+        timestamp = datetime.now(UTC,).isoformat()
+        rows = []
+
+        for collection, record_id, payload in records:
+            if collection not in COLLECTIONS or not record_id or len(record_id,) > 256:
+                raise ValueError("Invalid record collection or identifier.",)
+
+            rows.append((
+                record_id,
+                collection,
+                json.dumps(
+                    payload,
+                    allow_nan=False,
+                    sort_keys=True,
+                ),
+                timestamp,
+                timestamp,
+            ),)
+
+        with self.acquire_write():
+            self.connection.executemany(
+                """
+                    INSERT INTO record (
+                        id, collection, payload, system_created_at, system_updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
 
                     ON CONFLICT (collection, id) DO UPDATE SET
                         payload = excluded.payload,
@@ -224,6 +399,7 @@ class Store:
         destination: str,
     ) -> str:
         backup_path = Path(destination,).expanduser().resolve()
+
         backup_path.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -253,7 +429,7 @@ class Store:
     ) -> dict:
         datetime.fromisoformat(cutoff,)
 
-        with self.lock, self.connection:
+        with self.acquire_write():
             records = self.connection.execute(
                 """
                     SELECT candidate.id FROM record AS candidate
@@ -270,6 +446,7 @@ class Store:
                 """,
                 (cutoff,),
             ).fetchall()
+
             checkpoints = self.connection.execute(
                 """
                     SELECT checkpoint.id FROM record AS checkpoint
@@ -292,6 +469,7 @@ class Store:
                     "DELETE FROM record WHERE collection = 'analysis' AND id = ?",
                     records,
                 )
+
                 self.connection.executemany(
                     "DELETE FROM record WHERE collection = 'checkpoint' AND id = ?",
                     checkpoints,

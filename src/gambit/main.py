@@ -48,10 +48,12 @@ class AsyncStdin:
         if self.reader is None:
             self.reader = asyncio.StreamReader()
             protocol = asyncio.StreamReaderProtocol(self.reader,)
+
             transport, _ = await asyncio.get_running_loop().connect_read_pipe(
                 lambda: protocol,
                 sys.stdin,
             )
+
             self.transport = transport
 
         line = await self.reader.readline()
@@ -74,7 +76,7 @@ class AsyncStdout:
     async def flush(self,) -> None:
         sys.stdout.flush()
 
-class GambitMcpServer(MCPServer):
+class GambitMcpServer(MCPServer,):
     async def run_stdio_async(self,) -> None:
         if sys.platform == "win32":
             await super().run_stdio_async()
@@ -123,6 +125,7 @@ def get_position_analysis(
         multipv,
         nodes,
     )
+
     lines: list[dict[
         str,
         Any,
@@ -259,6 +262,7 @@ async def analyze_chessboard(
     from gambit.vision.recognizer import recognize_chessboard_image
     validate_multipv(multipv,)
     validate_nodes(nodes,)
+
     recognition = await execute_engine_request(
         recognize_chessboard_image,
         image,
@@ -299,12 +303,15 @@ async def tutor_move(
     validate_multipv(multipv,)
     validate_nodes(nodes,)
     board = parse_board(fen,)
+
     candidate_move = parse_move(
         board,
         move,
     )
+
     move_details = {"san": board.san(candidate_move,), "uci": candidate_move.uci(),}
     board.push(candidate_move,)
+
     result: dict[
         str,
         Any,
@@ -324,6 +331,7 @@ async def tutor_move(
         multipv,
         nodes,
     )
+
     result["best_replies"] = [
         {
             "rank": rank,
@@ -414,17 +422,20 @@ async def review_game(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Gambit chess tutoring MCP server.",)
+
     parser.add_argument(
         "command",
         nargs="?",
         choices=("serve", "initialize"),
         default="serve",
     )
+
     parser.add_argument(
         "--transport",
         choices=("stdio", "streamable-http"),
         default="stdio",
     )
+
     parser.add_argument(
         "--host",
         default=os.environ.get(
@@ -432,6 +443,7 @@ def main() -> None:
             "127.0.0.1",
         ),
     )
+
     parser.add_argument(
         "--port",
         type=int,
@@ -440,6 +452,7 @@ def main() -> None:
             "3025",
         ),),
     )
+
     arguments = parser.parse_args()
 
     if arguments.command == "initialize":

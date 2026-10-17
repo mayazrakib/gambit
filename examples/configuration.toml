@@ -1,4 +1,5 @@
-database_path = "~/.local/share/gambit/gambit.sqlite3"
+database_path = "runtime/gambit.sqlite3"
+runtime_directory = "runtime"
 engine_path = "stockfish"
 worker_count = 2
 threads_per_worker = 1
@@ -17,3 +18,5 @@ instant_search_time_ms = 150
 quick_search_time_ms = 600
 search_time_ms = 5000
 search_depth = 64
+should_refine_automatically = true
+prefetch_branches = 2

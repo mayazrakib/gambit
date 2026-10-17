@@ -24,11 +24,13 @@ Side = Literal[
     "white",
     "black",
 ]
+
 AnalysisSide = Literal[
     "white",
     "black",
     "both",
 ]
+
 MoveClassification = Literal[
     "forced",
     "best",
@@ -38,6 +40,7 @@ MoveClassification = Literal[
     "mistake",
     "blunder",
 ]
+
 MAX_PGN_BYTES = 262_144
 MAX_GAME_PLIES = 1_024
 MAX_BATCH_POSITIONS = 128
@@ -71,6 +74,7 @@ class ParsedMove:
     comment: str | None
     clock_seconds: float | None
     elapsed_move_seconds: float | None
+
     numeric_annotation_glyphs: tuple[
         int,
         ...,
@@ -82,8 +86,10 @@ class ParsedGame:
         str,
         str,
     ]
+
     initial_fen: str
     result: str | None
+
     moves: tuple[
         ParsedMove,
         ...,
@@ -100,14 +106,17 @@ class EngineEvaluation:
 class PrincipalVariation:
     rank: int
     evaluation: EngineEvaluation
+
     moves_uci: tuple[
         str,
         ...,
     ]
+
     moves_san: tuple[
         str,
         ...,
     ]
+
     depth: int | None = None
     actual_nodes: int | None = None
     engine_time_ms: int | None = None
@@ -122,23 +131,26 @@ class PositionAnalysisRequest:
 class PositionAnalysis:
     fen: str
     evaluation: EngineEvaluation
+
     principal_variations: tuple[
         PrincipalVariation,
         ...,
     ]
 
 @dataclass(frozen=True,)
-class MoveAnalysis(ParsedMove):
+class MoveAnalysis(ParsedMove,):
     evaluation_before: EngineEvaluation
     evaluation_after: EngineEvaluation
     best_move_san: str
     best_move_uci: str
     played_move_rank: int | None
     centipawn_loss: int | None
+
     principal_variations: tuple[
         PrincipalVariation,
         ...,
     ]
+
     nodes: int
     was_reanalyzed: bool
     is_critical: bool
@@ -159,12 +171,15 @@ class GameAnalysis:
         str,
         str,
     ]
+
     initial_fen: str
     result: str | None
+
     moves: tuple[
         MoveAnalysis,
         ...,
     ]
+
     engine: EngineMetadata
 
 @dataclass(frozen=True,)
@@ -200,6 +215,7 @@ class PlayerGameSummary:
     median_centipawn_loss: float | None
     largest_centipawn_loss: int | None
     largest_loss_ply: int | None
+
     critical_plies: tuple[
         int,
         ...,
@@ -211,19 +227,23 @@ class GameReview:
         str,
         str,
     ]
+
     initial_fen: str
     result: str | None
+
     moves: tuple[
         MoveReview,
         ...,
     ]
+
     engine: EngineMetadata
+
     summaries: tuple[
         PlayerGameSummary,
         ...,
     ]
 
-class ValidatedGameBuilder(chess.pgn.GameBuilder):
+class ValidatedGameBuilder(chess.pgn.GameBuilder,):
     def begin_game(self,) -> None:
         super().begin_game()
         self.game.headers.clear()
@@ -245,6 +265,7 @@ class ValidatedGameBuilder(chess.pgn.GameBuilder):
             "FEN",
             chess.STARTING_FEN,
         ),)
+
         self.initial_ply = board.ply()
 
         if self.game.headers.get("SetUp",) == "1" and "FEN" not in self.game.headers:
@@ -306,6 +327,7 @@ def validate_pgn_tokens(pgn: str,) -> None:
         r"\d+\.(?:\.\.)?|(?:" + chess.pgn.MOVETEXT_REGEX.pattern + r")[+#]?",
         re.VERBOSE,
     )
+
     offset = 0
     variation_depth = 0
     has_movetext = False
@@ -354,8 +376,10 @@ def parse_game(pgn: str,) -> ParsedGame:
         "\r",
         "\n",
     ).lstrip("\ufeff",)
+
     validate_pgn_tokens(pgn,)
     stream = io.StringIO(pgn,)
+
     game = chess.pgn.read_game(
         stream,
         Visitor=ValidatedGameBuilder,
@@ -386,6 +410,7 @@ def parse_game(pgn: str,) -> ParsedGame:
         side: Side = "white" if board.turn else "black"
         move_number = board.fullmove_number
         board.push(node.move,)
+
         moves.append(ParsedMove(
             ply,
             move_number,
@@ -467,6 +492,7 @@ def analyze_board(
         multipv,
         nodes,
     )
+
     variations: list[PrincipalVariation] = []
 
     for rank, line in enumerate(
@@ -532,6 +558,7 @@ def analyze_positions(
         ],
         PositionAnalysis,
     ] = {}
+
     results: list[PositionAnalysis] = []
 
     for request, board in zip(
@@ -669,16 +696,19 @@ def analyze_game(
         multipv,
         critical_loss_cp,
     )
+
     game = parse_game(pgn,)
 
     if not game.moves:
         raise ValueError("Game analysis requires at least one played move.",)
 
     selected = tuple((move for move in game.moves if side == "both" or move.side == side),)
+
     boards: dict[
         str,
         chess.Board,
     ] = {}
+
     cache: dict[
         tuple[
             str,
@@ -687,6 +717,7 @@ def analyze_game(
         ],
         PositionAnalysis,
     ] = {}
+
     history_board = parse_board(game.initial_fen,)
     boards[history_board.fen()] = history_board.copy()
 
@@ -718,6 +749,7 @@ def analyze_game(
             move.fen_before,
             initial_nodes,
         )
+
         get_analysis(
             move.fen_after,
             initial_nodes,
@@ -739,15 +771,18 @@ def analyze_game(
             critical_loss_cp,
         )
     }
+
     analyses: list[MoveAnalysis] = []
 
     for move in selected:
         is_critical = move.ply in critical_plies
         nodes = critical_nodes if is_critical else initial_nodes
+
         before = get_analysis(
             move.fen_before,
             nodes,
         )
+
         after = get_analysis(
             move.fen_after,
             nodes,
@@ -757,6 +792,7 @@ def analyze_game(
             raise ValueError(f"Cannot analyze ply {move.ply}: move played from a terminal position.",)
 
         best = before.principal_variations[0]
+
         rank = next(
             (
                 variation.rank
@@ -765,6 +801,7 @@ def analyze_game(
             ),
             None,
         )
+
         analyses.append(MoveAnalysis(
             move.ply,
             move.move_number,
@@ -880,12 +917,15 @@ def summarize_player(
     moves: Sequence[MoveReview],
 ) -> PlayerGameSummary:
     selected = tuple((move for move in moves if move.analysis.side == side),)
+
     losses = [
         move.analysis.centipawn_loss
         for move in selected
         if move.analysis.centipawn_loss is not None
     ]
+
     largest = max(losses,) if losses else None
+
     largest_ply = next(
         (
             move.analysis.ply
@@ -930,10 +970,12 @@ def review_game(
         multipv,
         critical_loss_cp,
     )
+
     features: dict[
         str,
         PositionFeatures,
     ] = {}
+
     reviews: list[MoveReview] = []
 
     for move in game.moves:
@@ -942,6 +984,7 @@ def review_game(
                 features[fen] = get_position_features(fen,)
 
         before, after = features[move.fen_before], features[move.fen_after]
+
         reviews.append(MoveReview(
             move,
             move.uci == move.best_move_uci,

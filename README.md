@@ -39,6 +39,19 @@ Set `syzygy_path` to use local Syzygy tablebases. Missing files produce an unava
 
 `get_speech_plan` prepares move text for speech. With espeak-ng installed, `synthesize_speech` writes a local WAV file; remote clients cannot read that file URI automatically. Screenshot recognition requires `uv sync --extra vision` and the optional model described in [third-party notices](src/gambit/THIRD_PARTY_NOTICES.md). Gambit does not provide microphone input, streamed audio, or a built-in conversational model.
 
+## Personal game archive
+
+Import your Chess.com history once, then use the same command to sync new games:
+```sh
+uv run python scripts/sync_games.py --username mayazrakib
+```
+
+Gambit keeps monthly JSON archives, including PGNs and game metadata, under `runtime/downloads` and indexes standard games in `runtime/corpus.sqlite3`. The first sync downloads every listed month. Later syncs revalidate the archive index, current month, and previous month using ETag and Last-Modified headers. Older downloaded months stay local; `--refresh` revalidates them too. Requests to Chess.com are sequential, rate-limit retries respect Retry-After, and unchanged responses reuse local files. The API can lag behind completed games. See the [Chess.com API documentation](https://www.chess.com/news/view/published-data-api).
+
+From MCP, use `manage_chess_data` with action `sync_games`, then inspect action `status`. This path syncs personal games without downloading the bulk teaching datasets. Game URLs identify games across repeated imports and updated annotations. Use `search_chess_material` and `get_chess_game` to select a local game for review.
+
+Downloading and importing games never starts Stockfish. Analyze requested games or selected training examples separately. Whole-game searches reuse durable checkpoints across jobs and restarts when engine identity, analysis settings, root position, and move history match. Changed evidence inputs trigger new analysis. Repository runtime data remains outside Git and shares the 20 GB capacity limit.
+
 ## Background service
 
 The default MCP transport is stdio. On Linux with systemd, Gambit can instead serve streamable HTTP on `127.0.0.1:3025/mcp` behind an outbound tunnel. Copy [.env.example](.env.example) to the ignored package-local `.env`, fill in the tunnel credentials, and keep the file private. The HTTP server has no independent authentication, so keep it on loopback.

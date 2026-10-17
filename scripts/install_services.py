@@ -51,11 +51,14 @@ def main() -> None:
         raise SystemExit("Create the package-local .env from .env.example before installing the services.",)
 
     environment_path.chmod(0o600,)
+
     configuration_directory = Path(os.environ.get(
         "XDG_CONFIG_HOME",
         str(Path.home() / ".config",),
     ),)
+
     service_directory = configuration_directory / "systemd" / "user"
+
     service_directory.mkdir(
         parents=True,
         exist_ok=True,
@@ -63,12 +66,14 @@ def main() -> None:
 
     for service_name in SERVICE_NAMES:
         template = (PACKAGE_DIRECTORY / "deploy" / service_name).read_text()
+
         rendered = render_service(
             template,
             PACKAGE_DIRECTORY,
             sys.executable,
             tunnel_executable,
         )
+
         destination = service_directory / service_name
 
         if destination.exists() and str(PACKAGE_DIRECTORY,) not in destination.read_text():
@@ -80,14 +85,17 @@ def main() -> None:
         ["systemctl", "--user", "daemon-reload",],
         check=True,
     )
+
     subprocess.run(
         ["systemctl", "--user", "enable", *SERVICE_NAMES,],
         check=True,
     )
+
     subprocess.run(
         ["systemctl", "--user", "restart", *SERVICE_NAMES,],
         check=True,
     )
+
     print("Gambit and its OpenAI tunnel services are installed and enabled.",)
 
 if __name__ == "__main__":

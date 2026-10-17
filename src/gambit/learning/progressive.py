@@ -1,6 +1,6 @@
 import logging
 import threading
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -31,22 +31,23 @@ class ProgressiveAnalysis:
     ) -> None:
         self.analysis = analysis
         self.lock = threading.RLock()
+
         self.requests: dict[
             str,
             AnalysisRequest,
         ] = {}
-        self.executor = ThreadPoolExecutor(
-            max_workers=1,
-            thread_name_prefix="gambit-progressive",
-        )
+
+        self.executor = analysis.background_executor
 
     def start(
         self,
         context_id: str,
         fen: str,
         history: list[str] | None = None,
+        is_automatic: bool = False,
     ) -> ProgressiveStart:
         validate_training_id(context_id,)
+
         board = build_board(
             fen,
             history,
@@ -74,6 +75,7 @@ class ProgressiveAnalysis:
                 threading.Event(),
                 "preliminary",
             )
+
             self.requests[request.request_id] = request
 
         try:
@@ -94,9 +96,12 @@ class ProgressiveAnalysis:
                 request.status = "cancelled"
             else:
                 request.status = "queued"
+
                 request.future = self.executor.submit(
                     self.run,
                     request,
+                    cancellation=request.cancellation,
+                    is_automatic=is_automatic,
                 )
 
         return {"schema_version": 1, "request_id": request.request_id, "context_id": context_id, "position_fen": board.fen(), "status": request.status, "preliminary": preliminary,}
@@ -148,12 +153,20 @@ class ProgressiveAnalysis:
 
             return {"schema_version": 1, "request_id": request_id, "context_id": request.context_id, "status": "cancelled" if is_stale else request.status, "analysis_id": None if is_stale else request.evidence_id, "error": request.error,}
 
+    def cancel_context(
+        self,
+        context_id,
+    ):
+        with self.lock:
+            for request in self.requests.values():
+                if request.context_id == context_id:
+                    request.cancellation.set()
+
     def close(self,) -> None:
         with self.lock:
             for request in self.requests.values():
                 request.cancellation.set()
 
-        self.executor.shutdown(
-            wait=True,
-            cancel_futures=True,
-        )
+        for request in self.requests.values():
+            if request.future is not None:
+                request.future.cancel()

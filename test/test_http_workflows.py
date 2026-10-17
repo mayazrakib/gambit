@@ -16,12 +16,14 @@ async def test_http_reconnection_preserves_learning_and_schemas(tmp_path,):
         port = listener.getsockname()[1]
 
     environment = {**os.environ, "GAMBIT_DATABASE": str(tmp_path / "http.sqlite3",),}
+
     process = subprocess.Popen(
         [sys.executable, "-m", "gambit.main", "serve", "--transport", "streamable-http", "--port", str(port,),],
         env=environment,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
     address = f"http://127.0.0.1:{port}/mcp"
 
     try:
@@ -32,6 +34,7 @@ async def test_http_reconnection_preserves_learning_and_schemas(tmp_path,):
                         "127.0.0.1",
                         port,
                     )
+
                     writer.close()
                     await writer.wait_closed()
 
@@ -65,6 +68,7 @@ async def test_http_reconnection_preserves_learning_and_schemas(tmp_path,):
                         "start_teaching_session",
                         {"fen": chess.STARTING_FEN, "learner_id": "http",},
                     )
+
                     assert not question.is_error
                     session_id = question.structured_content["session_id"]
 
@@ -74,25 +78,31 @@ async def test_http_reconnection_preserves_learning_and_schemas(tmp_path,):
                     write_stream,
                 ) as session:
                     await session.initialize()
+
                     hint = await session.call_tool(
                         "get_teaching_hint",
                         {"session_id": session_id, "level": 1,},
                     )
+
                     assert not hint.is_error
                     assert hint.structured_content["hint_level"] == 1
                     metrics = await session.call_tool("get_analysis_metrics",)
                     assert not metrics.is_error
                     assert metrics.structured_content["schema_version"] == 1
+
                     evaluation = await session.call_tool(
                         "evaluate_position",
                         {"fen": chess.STARTING_FEN, "profile": "instant",},
                     )
+
                     assert not evaluation.is_error
                     assert evaluation.structured_content["schema_version"] == 1
+
                     turn = await session.call_tool(
                         "create_tutor_turn",
                         {"fen": chess.STARTING_FEN, "move": "e4",},
                     )
+
                     assert not turn.is_error
                     assert turn.structured_content["is_compact"]
                     assert turn.structured_content["engine_evidence"]["profile"] == "instant"

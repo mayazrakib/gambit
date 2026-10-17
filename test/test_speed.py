@@ -19,8 +19,13 @@ from gambit.learning.tutoring import Tutor
 @pytest.fixture
 def analysis():
     store = Store(":memory:",)
+
     service = AnalysisService(
-        Configuration(worker_count=2,),
+        Configuration(
+            worker_count=2,
+            should_refine_automatically=False,
+            prefetch_branches=0,
+        ),
         store,
     )
 
@@ -38,10 +43,12 @@ def test_repeated_evidence_reuses_identity_and_preserves_history(analysis,):
     repeated["evaluation"]["centipawns"] = 99999
     assert analysis.evaluate(chess.STARTING_FEN,)["evaluation"] == first["evaluation"]
     history = ["g1f3", "g8f6", "f3g1", "f6g8",]
+
     historical = analysis.evaluate(
         chess.STARTING_FEN,
         moves=history,
     )
+
     position_only = analysis.evaluate(historical["fen"],)
     assert historical["id"] != position_only["id"]
     assert historical["has_complete_history"]
@@ -82,28 +89,35 @@ def test_instant_move_and_comparison_never_escalate(
         "analyze",
         record_search,
     )
+
     tutor = Tutor(
         analysis,
         Knowledge(analysis.store,),
         analysis.store,
     )
+
     turn = tutor.create_turn(
         chess.STARTING_FEN,
         move="e4",
     )
+
     assert turn["engine_evidence"]["fen"] == turn["position_context"]["fen"]
     assert turn["speech_plan"]["position_fen"] == turn["position_context"]["fen"]
     assert turn["move_assessment"]["assessment"]["evidence_status"] == "preliminary"
+
     comparison = tutor.create_turn(
         chess.STARTING_FEN,
         intent="compare",
         candidates=["e4", "d4",],
     )
+
     assert len(comparison["candidate_comparisons"],) == 2
+
     automatic = tutor.create_turn(
         chess.STARTING_FEN,
         intent="compare",
     )
+
     assert len(automatic["candidate_comparisons"],) == 2
     assert searches
     assert max(searches,) == analysis.configuration.instant_nodes
@@ -111,38 +125,47 @@ def test_instant_move_and_comparison_never_escalate(
 
 def test_compact_tutoring_retains_full_evidence_and_hides_hint_solutions(analysis,):
     knowledge = Knowledge(analysis.store,)
+
     knowledge.import_study(
         "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *",
         "Test opening",
         "Authored test",
     )
+
     tutor = Tutor(
         analysis,
         knowledge,
         analysis.store,
     )
+
     full = tutor.create_turn(
         chess.STARTING_FEN,
         profile="quick",
         is_compact=False,
     )
+
     compact = tutor.create_turn(
         chess.STARTING_FEN,
         profile="quick",
     )
+
     evidence_id = compact["engine_evidence"]["id"]
+
     stored = analysis.store.get(
         "analysis",
         evidence_id,
     )
+
     assert stored["principal_variations"] == json.loads(json.dumps(full["engine_evidence"]["principal_variations"],),)
     assert len(json.dumps(compact,),) < len(json.dumps(full,),)
     assert all((len(line["moves_uci"],) <= 4 for line in compact["engine_evidence"]["principal_variations"]),)
+
     hint = tutor.create_turn(
         chess.STARTING_FEN,
         intent="hint",
         move="e4",
     )
+
     assert hint["engine_evidence"]["is_solution_hidden"]
     assert "principal_variations" not in hint["engine_evidence"]
     assert hint["move_assessment"] is None
@@ -161,45 +184,57 @@ def test_preliminary_teaching_can_be_confirmed_without_false_mastery():
             SimpleNamespace(engine=CandidateEngine(),),
             store,
         )
+
         question = learning.start_session(chess.STARTING_FEN,)
+
         preliminary = learning.submit_move(
             question.session_id,
             "e4",
         )
+
         assert preliminary.assessment.evidence_status == "preliminary"
         assert learning.get_progress("default",)[0]["attempts"] == 0
+
         confirmed = learning.submit_move(
             question.session_id,
             "e4",
             "deep",
         )
+
         assert confirmed.is_accepted
         assert learning.get_progress("default",)[0]["independent_successes"] == 1
+
         training = Training(
             store,
             SimpleNamespace(engine=CandidateEngine(),),
         )
+
         store.put(
             "puzzle",
             "puzzle",
             {"id": "puzzle", "solution": ["d2d4",],},
         )
+
         store.put(
             "session",
             "session",
             {"id": "session", "puzzle_id": "puzzle", "learner_id": "learner", "fen": chess.STARTING_FEN, "ply": 0, "status": "active", "has_failed": False,},
         )
+
         preliminary_tactic = training.submit_tactic_move(
             "session",
             "e4",
         )
+
         assert preliminary_tactic["assessment"]["evidence_status"] == "preliminary"
         assert store.count_records("attempt",) == 0
+
         confirmed_tactic = training.submit_tactic_move(
             "session",
             "e4",
             "deep",
         )
+
         assert confirmed_tactic["is_correct"]
         assert store.count_records("attempt",) == 0
     finally:
@@ -224,6 +259,7 @@ def test_storage_position_lookup_uses_ordered_index(analysis,):
         "EXPLAIN QUERY PLAN SELECT payload FROM record WHERE collection = ? AND json_extract(payload, '$.position_key') = ? ORDER BY id LIMIT ? OFFSET ?",
         ("opening", "position", 3, 0),
     ).fetchall()
+
     assert any(("record_position_order" in row[3] for row in rows),)
     assert not any(("TEMP B-TREE" in row[3] for row in rows),)
 

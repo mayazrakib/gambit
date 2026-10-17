@@ -48,21 +48,27 @@ def restore_backup(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Back up, restore, or prune Gambit analysis records.",)
+
     parser.add_argument(
         "operation",
         choices=("backup", "restore", "prune"),
     )
+
     parser.add_argument("--path",)
     parser.add_argument("--destination",)
+
     parser.add_argument(
         "--age-days",
         type=int,
         default=90,
     )
+
     parser.add_argument(
         "--apply",
+        dest="should_apply",
         action="store_true",
     )
+
     arguments = parser.parse_args()
 
     if arguments.operation == "restore":
@@ -90,16 +96,17 @@ def main() -> None:
             if arguments.age_days < 1:
                 parser.error("Retention must be at least one day.",)
 
-            if arguments.apply and not arguments.path:
+            if arguments.should_apply and not arguments.path:
                 parser.error("Applying retention requires --path for a recoverable backup.",)
 
-            if arguments.apply:
+            if arguments.should_apply:
                 store.create_backup(arguments.path,)
 
             cutoff = (datetime.now(UTC,) - timedelta(days=arguments.age_days,)).isoformat()
+
             report = store.prune_analysis(
                 cutoff,
-                arguments.apply,
+                arguments.should_apply,
             )
 
         print(json.dumps(report,),)

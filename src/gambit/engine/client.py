@@ -8,6 +8,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
 from dataclasses import dataclass
 from queue import Empty, Queue
 from time import monotonic
@@ -24,11 +25,51 @@ MAX_MULTIPV = 5
 ENGINE_RESPONSE_TIMEOUT_SECONDS = 30
 ENGINE_THREADS = 1
 ENGINE_HASH_MB = 16
+
 ENGINE_REQUEST_EXECUTOR = ThreadPoolExecutor(
     max_workers=4,
     thread_name_prefix="gambit-analysis",
 )
+
 ENGINE_REQUEST_SLOTS = threading.BoundedSemaphore(32,)
+
+@dataclass(frozen=True,)
+class RequestContext:
+    cancellation: threading.Event
+    deadline: float | None = None
+    is_background: bool = False
+    parent: "RequestContext | None" = None
+
+    def is_set(self,) -> bool:
+        return self.cancellation.is_set() or (self.deadline is not None and monotonic() >= self.deadline) or (self.parent is not None and self.parent.is_set())
+
+REQUEST_CONTEXT: ContextVar[RequestContext | None] = ContextVar(
+    "gambit_request_context",
+    default=None,
+)
+
+@dataclass(frozen=True,)
+class RequestCancellation:
+    cancellation: threading.Event | None
+    context: RequestContext | None
+
+    def is_set(self,) -> bool:
+        return (self.cancellation is not None and self.cancellation.is_set()) or (self.context is not None and self.context.is_set())
+
+def get_request_cancellation(cancellation: threading.Event | None = None,) -> RequestCancellation:
+    return RequestCancellation(
+        cancellation,
+        REQUEST_CONTEXT.get(),
+    )
+
+def check_request_active(cancellation: threading.Event | None = None,) -> None:
+    context = REQUEST_CONTEXT.get()
+
+    if context is not None and context.deadline is not None and monotonic() >= context.deadline:
+        raise TimeoutError("The analysis request deadline expired.",)
+
+    if (cancellation is not None and cancellation.is_set()) or (context is not None and context.is_set()):
+        raise InterruptedError("Analysis was cancelled.",)
 
 async def execute_engine_request[
     Result,
@@ -45,16 +86,29 @@ async def execute_engine_request[
         raise RuntimeError("The MCP operation queue is full. Retry after active work completes.",)
 
     submitted = monotonic()
+    inherited_context = REQUEST_CONTEXT.get()
+
+    context = RequestContext(
+        threading.Event(),
+        inherited_context.deadline if inherited_context is not None else None,
+        inherited_context.is_background if inherited_context is not None else False,
+        inherited_context,
+    )
 
     def run_operation() -> Result:
         started = monotonic()
+        context_token = REQUEST_CONTEXT.set(context,)
 
         try:
+            check_request_active()
+
             return operation(
                 *args,
                 **kwargs,
             )
         finally:
+            REQUEST_CONTEXT.reset(context_token,)
+
             logging.getLogger(__name__,).info(
                 "MCP operation %s completed. Queue: %.2f ms. Execution: %.2f ms.",
                 getattr(
@@ -78,6 +132,7 @@ async def execute_engine_request[
     try:
         return await asyncio.wrap_future(future,)
     finally:
+        context.cancellation.set()
         future.cancel()
 
 def get_stockfish_path() -> str:
@@ -107,16 +162,20 @@ class StockfishClient:
         self.configuration = configuration or Configuration()
         self.has_explicit_configuration = configuration is not None
         self.binary_digest: str | None = None
+
         self.last_metrics: dict[
             str,
             int,
         ] = {}
+
         self.process: subprocess.Popen[str] | None = None
         self.lock = threading.Lock()
+
         self.cache: OrderedDict[
             tuple,
             list[EngineLine],
         ] = OrderedDict()
+
         self.multipv: int | None = None
         self.output: Queue[str | None] = Queue()
         self.reader: threading.Thread | None = None
@@ -168,6 +227,7 @@ class StockfishClient:
             if self.has_explicit_configuration
             else get_stockfish_path()
         )
+
         self.process = subprocess.Popen(
             [engine_path,],
             stdin=subprocess.PIPE,
@@ -177,12 +237,15 @@ class StockfishClient:
             bufsize=1,
             env={name: setting for name, setting in os.environ.items() if not name.startswith(("OPENAI_", "CONTROL_PLANE_"),)},
         )
+
         self.output = Queue()
+
         self.reader = threading.Thread(
             target=self.collect_output,
             args=(self.process, self.output),
             daemon=True,
         )
+
         self.reader.start()
         self.send("uci",)
         self.read_until("uciok",)
@@ -251,6 +314,7 @@ class StockfishClient:
 
             if line.startswith("id name ",):
                 self.name = line.removeprefix("id name ",)
+
                 self.version = (
                     self.name.removeprefix("Stockfish ",)
                     if self.name.startswith("Stockfish ",)
@@ -272,6 +336,8 @@ class StockfishClient:
         ] = (),
         cancellation: threading.Event | None = None,
     ) -> list[EngineLine]:
+        cancellation = get_request_cancellation(cancellation,)
+
         with self.lock:
             if cancellation is not None and cancellation.is_set():
                 raise InterruptedError("Analysis was cancelled.",)
@@ -320,11 +386,12 @@ class StockfishClient:
                     search_command += " searchmoves " + " ".join(root_moves,)
 
                 self.send(search_command,)
+
                 analysis = self.read_analysis(
                     board,
                     cancellation,
                 )
-            except InterruptedError:
+            except (InterruptedError, TimeoutError):
                 raise
             except (OSError, ValueError, RuntimeError) as exception:
                 self.stop()
@@ -342,10 +409,13 @@ class StockfishClient:
         board: chess.Board,
         cancellation: threading.Event | None = None,
     ) -> list[EngineLine]:
+        cancellation = get_request_cancellation(cancellation,)
+
         lines_by_rank: dict[
             int,
             EngineLine,
         ] = {}
+
         deadline = monotonic() + ENGINE_RESPONSE_TIMEOUT_SECONDS
         was_cancelled = False
 
@@ -366,7 +436,9 @@ class StockfishClient:
                 raise RuntimeError("Stockfish stopped before returning a response.",)
 
             if line.startswith("bestmove ",):
-                if was_cancelled:
+                if was_cancelled or cancellation.is_set():
+                    check_request_active()
+
                     raise InterruptedError("Analysis was cancelled.",)
 
                 best_move = chess.Move.from_uci(line.split()[1],)
@@ -387,6 +459,7 @@ class StockfishClient:
                     field,
                     default=0,
                 )
+
                 self.last_metrics[field] = metric
 
             parsed_line = parse_analysis_line(
@@ -492,6 +565,7 @@ def get_variation(
     str,
 ]]:
     variation_board = board.copy()
+
     variation: list[dict[
         str,
         str,

@@ -24,6 +24,7 @@ def parse_study(pgn: str,) -> chess.pgn.Game:
 
     validate_pgn_tokens(pgn,)
     stream = io.StringIO(pgn,)
+
     game = chess.pgn.read_game(
         stream,
         Visitor=ValidatedGameBuilder,
@@ -67,6 +68,7 @@ class Knowledge:
                 key = get_position_key(board,)
                 move = child.move
                 record_id = hashlib.sha256((study_id + key + move.uci()).encode(),).hexdigest()
+
                 records.append({
                     "id": record_id,
                     "study_id": study_id,
@@ -81,6 +83,7 @@ class Knowledge:
                     "provenance": collection,
                     "ply": ply,
                 },)
+
                 next_board = board.copy()
                 next_board.push(move,)
                 stack.append((child, next_board, ply + 1),)
@@ -89,7 +92,9 @@ class Knowledge:
             collection,
             records,
         )
+
         final_board = game.end().board()
+
         self.store.put(
             "study",
             study_id,
@@ -107,6 +112,7 @@ class Knowledge:
     ) -> dict:
         board = parse_board(fen,)
         collection = "repertoire" if is_repertoire else "opening"
+
         records = self.store.list_records(
             collection,
             limit,
@@ -153,6 +159,7 @@ class Knowledge:
                 row["name"],
                 source,
             )
+
             imported += report["imported_edges"]
 
         return {"imported_lines": len(rows,), "imported_edges": imported, "source": source,}

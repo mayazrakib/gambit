@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Literal
 
 import chess
 
-from gambit.engine.client import EngineLine, parse_board, parse_move
+from gambit.engine.client import EngineLine, check_request_active, parse_board, parse_move
 from gambit.game.service import EngineEvaluation, get_variation, normalize_evaluation
 
 if TYPE_CHECKING:
@@ -34,17 +34,20 @@ class MoveAssessment:
     fen: str
     root_fen: str
     history: list[str]
+
     evidence_status: Literal[
         "preliminary",
         "deeper confirmation",
         "unstable",
     ]
+
     classification: Literal[
         "acceptable",
         "inaccuracy",
         "serious mistake",
         "uncertain",
     ]
+
     preliminary: CandidateEvidence
     verified: CandidateEvidence
     best_move_uci: str
@@ -100,6 +103,7 @@ def classify_loss(
         0,
         best["centipawns"] - candidate["centipawns"],
     )
+
     classification = "serious mistake" if loss >= SERIOUS_LOSS_CP else "inaccuracy"
 
     return loss, None, "acceptable" if loss <= ACCEPTABLE_LOSS_CP else classification
@@ -122,6 +126,7 @@ def create_evidence(
         best,
         candidate,
     )
+
     replay = board.copy()
     observations = []
 
@@ -130,6 +135,7 @@ def create_evidence(
             replay,
             entry["uci"],
         )
+
         actor = "White" if replay.turn else "Black"
 
         if replay.is_capture(move,):
@@ -178,6 +184,14 @@ def assess_move(
     cancellation: Event | None = None,
     *,
     profile: str = "instant",
+    baseline_lines: dict[
+        int,
+        EngineLine,
+    ] | None = None,
+    candidate_lines: dict[
+        int,
+        EngineLine,
+    ] | None = None,
 ) -> MoveAssessment:
     if profile not in ("instant", "quick", "deep"):
         raise ValueError("Analysis profile must be instant, quick, or deep.",)
@@ -194,6 +208,7 @@ def assess_move(
         board,
         move,
     )
+
     stages = []
 
     budgets = (
@@ -206,22 +221,30 @@ def assess_move(
     )
 
     for nodes in budgets:
-        best = engine.analyze(
-            board,
-            1,
-            nodes,
-            cancellation=cancellation,
-        )[0]
-        selected = best
+        check_request_active(cancellation,)
+        best = baseline_lines.get(nodes,) if baseline_lines is not None else None
 
-        if best["pv"][0] != candidate:
-            selected = engine.analyze(
+        if best is None:
+            best = engine.analyze(
                 board,
                 1,
                 nodes,
-                root_moves=(candidate.uci(),),
                 cancellation=cancellation,
             )[0]
+
+        selected = best
+
+        if best["pv"][0] != candidate:
+            selected = candidate_lines.get(nodes,) if candidate_lines is not None else None
+
+            if selected is None:
+                selected = engine.analyze(
+                    board,
+                    1,
+                    nodes,
+                    root_moves=(candidate.uci(),),
+                    cancellation=cancellation,
+                )[0]
 
         if not selected["pv"] or selected["pv"][0] != candidate:
             raise RuntimeError("The engine did not return the requested root candidate.",)
@@ -235,6 +258,7 @@ def assess_move(
     verified = stages[-1]
     is_stable = preliminary[2] == verified[2] and preliminary[0]["pv"][0] == verified[0]["pv"][0]
     has_deeper_budget = len(budgets,) > 1 and budgets[-1] > budgets[0]
+
     has_more_work = all((verified[index].get(
         "actual_nodes",
         0,
@@ -250,18 +274,21 @@ def assess_move(
             0,
         )
         for index in (0, 1)),)
+
     status = "deeper confirmation" if is_stable and has_deeper_budget else "unstable"
 
     if not has_deeper_budget or not has_more_work:
         status = "preliminary"
 
     variation_plies = FULL_VARIATION_PLIES if profile == "deep" else SPOKEN_VARIATION_PLIES
+
     preliminary_evidence = create_evidence(
         board,
         preliminary[0],
         preliminary[1],
         variation_plies,
     )
+
     verified_evidence = preliminary_evidence if len(stages,) == 1 else create_evidence(
         board,
         verified[0],

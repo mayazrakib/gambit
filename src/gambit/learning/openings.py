@@ -111,7 +111,9 @@ class OpeningPlans:
             payload,
             sort_keys=True,
         ).encode(),).hexdigest()
+
         record = {"schema_version": 1, "id": identifier, "position_key": get_position_key(board,), **payload, "evidence_kind": "source teaching advice", "is_engine_verified": False,}
+
         self.store.put(
             "opening_plan",
             identifier,
@@ -157,20 +159,24 @@ class OpeningPlans:
         population: str,
     ) -> OpeningStatistics:
         board = parse_board(fen,)
+
         candidate = parse_move(
             board,
             move,
         )
+
         date.fromisoformat(source_date,)
 
         if any((type(count,) is not int or count < 0 or count > 1000000000 for count in (white_wins, draws, black_wins)),) or not source.strip() or not population.strip():
             raise ValueError("Opening statistics require bounded nonnegative counts, a source, and a population description.",)
 
         payload = {"schema_version": 1, "position_key": get_position_key(board,), "move_uci": candidate.uci(), "white_wins": white_wins, "draws": draws, "black_wins": black_wins, "source": source, "source_date": source_date, "population": population,}
+
         identifier = hashlib.sha256(json.dumps(
             payload,
             sort_keys=True,
         ).encode(),).hexdigest()
+
         self.store.put(
             "observation",
             identifier,

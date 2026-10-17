@@ -26,6 +26,19 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 onnxruntime.disable_telemetry_events()
 
+BOARD_DIMENSION_SQUARES = 8
+BOARD_SQUARE_COUNT = 64
+LAST_RANK_START_INDEX = 56
+MODEL_BOARD_DIMENSION_PIXELS = 256
+MODEL_TILE_DIMENSION_PIXELS = 32
+MODEL_TILE_FEATURE_COUNT = 1_024
+MODEL_CLASS_COUNT = 13
+CHECKERBOARD_SAMPLE_DIMENSION_PIXELS = 64
+MAX_PIXEL_INTENSITY = 255
+MASK_PIXEL_INTENSITY = 128
+MAX_LOCAL_PATH_CHARACTERS = 4_096
+MAX_ONNX_THREADS = 4
+MAX_UNCERTAIN_SQUARES = 12
 MAX_DETECT_DIMENSION = 1_600
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
 MAX_IMAGE_PIXELS = 40_000_000
@@ -34,12 +47,23 @@ UNCERTAIN_TILE_FLOOR = 0.85
 MAX_SCAN_PASSES = 3
 MAX_CANDIDATE_SEQUENCES = 5
 MAX_PEAKS_PER_AXIS = 96
+RECOGNITION_CACHE_CAPACITY = 16
 PEAK_KEEP_RATIO = 0.2
 MIN_SEQUENCE_LENGTH = 7
 SEQUENCE_ERROR_PIXELS = 5
 LABELS = "1KQRBNPkqrbnp"
 EMPTY_PLACEMENT = "8/8/8/8/8/8/8/8"
 MODEL_FILENAME = "chess-tiles-v2.onnx"
+
+CHECKERBOARD_KERNEL = numpy.fromfunction(
+    lambda y, x: numpy.where(
+        ((x // 8 + y // 8) % 2) == 0,
+        1.0,
+        -1.0,
+    ),
+    (CHECKERBOARD_SAMPLE_DIMENSION_PIXELS, CHECKERBOARD_SAMPLE_DIMENSION_PIXELS),
+    dtype=int,
+)
 
 Orientation = Literal[
     "auto",
@@ -63,10 +87,12 @@ class GrayImage:
 @dataclass(frozen=True,)
 class Recognition:
     placement: str
+
     confidences: tuple[
         float,
         ...,
     ]
+
     min_confidence: float
     mean_confidence: float
     corners: BoardCorners
@@ -87,6 +113,7 @@ class PeakSequence:
         int,
         ...,
     ]
+
     full: tuple[
         int,
         ...,
@@ -112,6 +139,7 @@ def calculate_hough_response(
     ],
 ) -> numpy.ndarray:
     sum_axis = 1 if axis == "rows" else 0
+
     positive = numpy.maximum(
         gradient,
         0,
@@ -119,6 +147,7 @@ def calculate_hough_response(
         axis=sum_axis,
         dtype=numpy.float64,
     )
+
     negative = numpy.maximum(
         -gradient,
         0,
@@ -141,6 +170,7 @@ def suppress_nonmaximum(
             0,
             index - window_size,
         ) : index].max(),)
+
         right = (
             0.0
             if index >= length - 2
@@ -160,10 +190,12 @@ def find_all_sequences(points: list[int],) -> list[list[int]]:
         return []
 
     sequences: list[list[int]] = []
+
     used_pairs: set[tuple[
         int,
         int,
     ]] = set()
+
     points_array = numpy.asarray(points,)
 
     for first_index in range(len(points,) - 1,):
@@ -233,14 +265,17 @@ def rank_peak_sequences(hough: numpy.ndarray,) -> list[PeakSequence]:
 
     if len(candidates,) > MAX_PEAKS_PER_AXIS:
         strengths = suppressed[candidates]
+
         keep = numpy.argpartition(
             strengths,
             -MAX_PEAKS_PER_AXIS,
         )[-MAX_PEAKS_PER_AXIS:]
+
         candidates = numpy.sort(candidates[keep],)
 
     positions = [int(position,) for position in candidates]
     normalized = {position: float(suppressed[position] / peak,) for position in positions}
+
     scored: list[tuple[
         float,
         PeakSequence,
@@ -254,6 +289,7 @@ def rank_peak_sequences(hough: numpy.ndarray,) -> list[PeakSequence]:
                 0.0,
             ) for position in sequence],
         )
+
         scored.append((
                 float(numpy.mean(strengths,),),
                 PeakSequence(
@@ -266,6 +302,7 @@ def rank_peak_sequences(hough: numpy.ndarray,) -> list[PeakSequence]:
         key=lambda item: item[0],
         reverse=True,
     )
+
     unique: list[PeakSequence] = []
 
     for _, candidate in scored:
@@ -277,16 +314,6 @@ def rank_peak_sequences(hough: numpy.ndarray,) -> list[PeakSequence]:
 
     return unique
 
-_CHECKERBOARD_KERNEL = numpy.fromfunction(
-    lambda y, x: numpy.where(
-        ((x // 8 + y // 8) % 2) == 0,
-        1.0,
-        -1.0,
-    ),
-    (64, 64),
-    dtype=int,
-)
-
 def calculate_checkerboard_score(
     image: GrayImage,
     corners: BoardCorners,
@@ -297,10 +324,11 @@ def calculate_checkerboard_score(
     if width <= 0 or height <= 0:
         return 0.0
 
-    xs = corners.x0 + numpy.floor(numpy.arange(64,) * width / 64,).astype(numpy.int32,)
-    ys = corners.y0 + numpy.floor(numpy.arange(64,) * height / 64,).astype(numpy.int32,)
-    valid_x = (xs >= 0) & (xs < image.width)
-    valid_y = (ys >= 0) & (ys < image.height)
+    xs = corners.x0 + numpy.floor(numpy.arange(CHECKERBOARD_SAMPLE_DIMENSION_PIXELS,) * width / CHECKERBOARD_SAMPLE_DIMENSION_PIXELS,).astype(numpy.int32,)
+    ys = corners.y0 + numpy.floor(numpy.arange(CHECKERBOARD_SAMPLE_DIMENSION_PIXELS,) * height / CHECKERBOARD_SAMPLE_DIMENSION_PIXELS,).astype(numpy.int32,)
+    is_valid_x = (xs >= 0) & (xs < image.width)
+    is_valid_y = (ys >= 0) & (ys < image.height)
+
     sampled = image.data[numpy.ix_(
         numpy.clip(
             ys,
@@ -313,22 +341,25 @@ def calculate_checkerboard_score(
             image.width - 1,
         ),
     )]
+
     sampled = sampled * numpy.outer(
-        valid_y,
-        valid_x,
+        is_valid_y,
+        is_valid_x,
     )
 
-    return float(numpy.sum(sampled * _CHECKERBOARD_KERNEL,) / 64,)
+    return float(numpy.sum(sampled * CHECKERBOARD_KERNEL,) / CHECKERBOARD_SAMPLE_DIMENSION_PIXELS,)
 
 def snap_corners(
     image: GrayImage,
     corners: BoardCorners,
 ) -> BoardCorners:
     tile = (corners.x1 - corners.x0) / 8
+
     radius = max(
         2,
         round(tile / 3,),
     )
+
     best_dx = 0
     best_dy = 0
     best_score = -float("inf",)
@@ -338,12 +369,14 @@ def snap_corners(
         dy: int,
     ) -> None:
         nonlocal best_dx, best_dy, best_score
+
         candidate = BoardCorners(
             corners.x0 + dx,
             corners.y0 + dy,
             corners.x1 + dx,
             corners.y1 + dy,
         )
+
         score = calculate_checkerboard_score(
             image,
             candidate,
@@ -453,6 +486,7 @@ def reconstruct_square_board(
             step,
         ):
             window_end = window_start + span
+
             corners = (
                 BoardCorners(
                     extent_start,
@@ -468,6 +502,7 @@ def reconstruct_square_board(
                     extent_end,
                 )
             )
+
             score = calculate_checkerboard_score(
                 image,
                 corners,
@@ -506,6 +541,7 @@ def repair_parity(
     corners: BoardCorners,
 ) -> BoardCorners:
     best = corners
+
     best_score = calculate_checkerboard_score(
         image,
         corners,
@@ -523,6 +559,7 @@ def repair_parity(
             corners.x1 + shift_x,
             corners.y1 + shift_y,
         )
+
         score = calculate_checkerboard_score(
             image,
             candidate,
@@ -538,10 +575,12 @@ def find_chessboard_corners(image: GrayImage,) -> BoardCorners | None:
         calculate_gradient_rows(image,),
         "rows",
     )
+
     columns = calculate_hough_response(
         calculate_gradient_columns(image,),
         "columns",
     )
+
     candidates_y = rank_peak_sequences(rows,)
     candidates_x = rank_peak_sequences(columns,)
     lines_y = candidates_y[0].trimmed if candidates_y else None
@@ -587,6 +626,7 @@ def find_chessboard_corners(image: GrayImage,) -> BoardCorners | None:
                 round(lines_x[x_start + 6] + step_x,),
                 round(lines_y[y_start + 6] + step_y,),
             )
+
             score = calculate_checkerboard_score(
                 image,
                 corners,
@@ -604,37 +644,44 @@ def extract_tiles(
     image: GrayImage,
     corners: BoardCorners,
 ) -> numpy.ndarray:
-    board_size = 256
+    board_size = MODEL_BOARD_DIMENSION_PIXELS
+
     target = numpy.arange(
         board_size,
         dtype=numpy.float32,
     ) + 0.5
+
     source_x = corners.x0 + target * (corners.x1 - corners.x0) / board_size - 0.5
     source_y = corners.y0 + target * (corners.y1 - corners.y0) / board_size - 0.5
     floor_x = numpy.floor(source_x,).astype(numpy.int32,)
     floor_y = numpy.floor(source_y,).astype(numpy.int32,)
     weight_x = source_x - floor_x
     weight_y = source_y - floor_y
+
     x0 = numpy.clip(
         floor_x,
         0,
         image.width - 1,
     )
+
     x1 = numpy.clip(
         floor_x + 1,
         0,
         image.width - 1,
     )
+
     y0 = numpy.clip(
         floor_y,
         0,
         image.height - 1,
     )
+
     y1 = numpy.clip(
         floor_y + 1,
         0,
         image.height - 1,
     )
+
     top = image.data[numpy.ix_(
         y0,
         x0,
@@ -642,6 +689,7 @@ def extract_tiles(
         y0,
         x1,
     )] * weight_x
+
     bottom = image.data[numpy.ix_(
         y1,
         x0,
@@ -649,18 +697,20 @@ def extract_tiles(
         y1,
         x1,
     )] * weight_x
+
     board = (top * (1 - weight_y[
         :,
         None,
     ]) + bottom * weight_y[
         :,
         None,
-    ]) / 255
+    ]) / MAX_PIXEL_INTENSITY
+
     tiles = board.reshape(
-        8,
-        32,
-        8,
-        32,
+        BOARD_DIMENSION_SQUARES,
+        MODEL_TILE_DIMENSION_PIXELS,
+        BOARD_DIMENSION_SQUARES,
+        MODEL_TILE_DIMENSION_PIXELS,
     ).transpose(
         0,
         2,
@@ -670,8 +720,8 @@ def extract_tiles(
 
     return numpy.ascontiguousarray(
         tiles.reshape(
-            64,
-            1_024,
+            BOARD_SQUARE_COUNT,
+            MODEL_TILE_FEATURE_COUNT,
         ),
         dtype=numpy.float32,
     )
@@ -681,20 +731,25 @@ def convert_probabilities_to_recognition(
     corners: BoardCorners,
 ) -> Recognition:
     probabilities = numpy.asarray(probabilities,).reshape(
-        64,
-        13,
+        BOARD_SQUARE_COUNT,
+        MODEL_CLASS_COUNT,
     )
+
     class_indices = probabilities.argmax(axis=1,)
+
     confidences_array = probabilities[
-        numpy.arange(64,),
+        numpy.arange(BOARD_SQUARE_COUNT,),
         class_indices,
     ]
+
     pieces = [LABELS[index] for index in class_indices]
-    ranks = ["".join(pieces[start : start + 8],) for start in range(
-        56,
+
+    ranks = ["".join(pieces[start : start + BOARD_DIMENSION_SQUARES],) for start in range(
+        LAST_RANK_START_INDEX,
         -1,
-        -8,
+        -BOARD_DIMENSION_SQUARES,
     )]
+
     compressed_ranks: list[str] = []
 
     for rank in ranks:
@@ -734,26 +789,31 @@ def mask_region(
     corners: BoardCorners,
 ) -> GrayImage:
     data = image.data.copy()
+
     x0 = max(
         0,
         corners.x0,
     )
+
     y0 = max(
         0,
         corners.y0,
     )
+
     x1 = min(
         image.width,
         corners.x1,
     )
+
     y1 = min(
         image.height,
         corners.y1,
     )
+
     data[
         y0:y1,
         x0:x1,
-    ] = 128
+    ] = MASK_PIXEL_INTENSITY
 
     return GrayImage(
         data,
@@ -774,7 +834,7 @@ def read_image_bytes(source: str,) -> bytes:
             raise ValueError("Remote file URLs are not supported.",)
 
         return read_image_path(Path(unquote(parsed.path,),),)
-    elif len(source,) <= 4_096 and Path(source,).is_file():
+    elif len(source,) <= MAX_LOCAL_PATH_CHARACTERS and Path(source,).is_file():
         return read_image_path(Path(source,),)
     else:
         encoded = source
@@ -797,11 +857,11 @@ def read_image_bytes(source: str,) -> bytes:
 
 def read_image_path(path: Path,) -> bytes:
     try:
-        size = path.stat().st_size
+        size_bytes = path.stat().st_size
     except OSError as exception:
         raise ValueError(f"Cannot read image path: {path}.",) from exception
 
-    if size > MAX_IMAGE_BYTES:
+    if size_bytes > MAX_IMAGE_BYTES:
         raise ValueError(f"Image must be no larger than {MAX_IMAGE_BYTES // (1024 * 1024)} MB.",)
 
     try:
@@ -821,6 +881,7 @@ def load_image(source: str,) -> LoadedImage:
 
             image = ImageOps.exif_transpose(opened,).convert("L",)
             original_width, original_height = image.size
+
             scale = min(
                 1.0,
                 MAX_DETECT_DIMENSION / max(image.size,),
@@ -957,6 +1018,7 @@ class ChessboardRecognizer:
         self.session: onnxruntime.InferenceSession | None = None
         self.session_lock = threading.Lock()
         self.cache_lock = threading.Lock()
+
         self.cache: OrderedDict[
             str,
             Recognition | None,
@@ -986,14 +1048,17 @@ class ChessboardRecognizer:
                 options = onnxruntime.SessionOptions()
                 options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
                 options.intra_op_num_threads = max(
                     1,
                     min(
-                        4,
+                        MAX_ONNX_THREADS,
                         os.cpu_count() or 1,
                     ),
                 )
+
                 options.inter_op_num_threads = 1
+
                 self.session = onnxruntime.InferenceSession(
                     str(model_path,),
                     sess_options=options,
@@ -1041,6 +1106,7 @@ class ChessboardRecognizer:
             image,
             corners,
         )
+
         snapped = snap_corners(
             image,
             corners,
@@ -1101,7 +1167,7 @@ class ChessboardRecognizer:
         with self.cache_lock:
             self.cache[loaded.digest] = result
 
-            while len(self.cache,) > 16:
+            while len(self.cache,) > RECOGNITION_CACHE_CAPACITY:
                 self.cache.popitem(last=False,)
 
         return result
@@ -1120,6 +1186,7 @@ def recognize_chessboard_image(
     started = time.perf_counter()
     loaded = load_image(image,)
     result = recognizer.recognize(loaded,)
+
     elapsed_ms = round(
         (time.perf_counter() - started) * 1_000,
         1,
@@ -1132,11 +1199,13 @@ def recognize_chessboard_image(
         result.placement,
         orientation,
     )
+
     fen = compose_fen(
         placement,
         side_to_move,
         infer_castling_rights,
     )
+
     uncertain = sorted(
         (
             {
@@ -1154,7 +1223,9 @@ def recognize_chessboard_image(
         ),
         key=lambda item: item["confidence"],
     )
+
     scale = loaded.scale
+
     corners = {
         "x0": round(result.corners.x0 / scale,),
         "y0": round(result.corners.y0 / scale,),
@@ -1180,7 +1251,7 @@ def recognize_chessboard_image(
                 4,
             ),
         },
-        "uncertain_squares": uncertain[:12],
+        "uncertain_squares": uncertain[:MAX_UNCERTAIN_SQUARES],
         "detected_board": corners,
         "image_size": {
             "width": loaded.original_width,

@@ -38,6 +38,7 @@ def load_bundled_openings(store: Store,) -> dict:
                 move = board.parse_san(token,)
                 key = get_position_key(board,)
                 record_id = hashlib.sha256((study_id + key + move.uci()).encode(),).hexdigest()
+
                 records.append({
                     "id": record_id,
                     "study_id": study_id,
@@ -52,6 +53,7 @@ def load_bundled_openings(store: Store,) -> dict:
                     "provenance": "corpus",
                     "ply": board.ply(),
                 },)
+
                 board.push(move,)
 
             studies.append({"id": study_id, "name": row["name"], "eco": row["eco"], "position_key": get_position_key(board,), "fen": board.fen(), "source": OPENING_SOURCE, "provenance": "corpus", "pgn": row["pgn"],},)
@@ -60,6 +62,7 @@ def load_bundled_openings(store: Store,) -> dict:
         "opening",
         records,
     )
+
     store.put_many(
         "study",
         studies,

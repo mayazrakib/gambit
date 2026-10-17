@@ -13,6 +13,7 @@ PIECE_POINTS = {
     chess.QUEEN: 9,
     chess.KING: 0,
 }
+
 FEATURE_CACHE_CAPACITY = 512
 
 def inspect_features(fen: str,) -> dict:
@@ -29,20 +30,22 @@ def calculate_features(fen: str,) -> dict:
             chess.PAWN,
             color,
         )
+
         enemy_pawns = board.pieces(
             chess.PAWN,
             not color,
         )
+
         pawn_files = [chess.square_file(square,) for square in pawns]
-        isolated = []
-        passed = []
+        isolated_pawn_squares = []
+        passed_pawn_squares = []
 
         for square in pawns:
             file_index = chess.square_file(square,)
             rank = chess.square_rank(square,)
 
             if all((abs(other_file - file_index,) != 1 for other_file in pawn_files),):
-                isolated.append(chess.square_name(square,),)
+                isolated_pawn_squares.append(chess.square_name(square,),)
 
             blockers = [
                 enemy
@@ -52,11 +55,11 @@ def calculate_features(fen: str,) -> dict:
             ]
 
             if not blockers:
-                passed.append(chess.square_name(square,),)
+                passed_pawn_squares.append(chess.square_name(square,),)
 
-        pinned = []
-        undefended = []
-        forks = []
+        pinned_piece_squares = []
+        undefended_piece_squares = []
+        fork_candidates = []
 
         for square, piece in pieces.items():
             if piece.color != color:
@@ -66,13 +69,13 @@ def calculate_features(fen: str,) -> dict:
                 color,
                 square,
             ):
-                pinned.append(chess.square_name(square,),)
+                pinned_piece_squares.append(chess.square_name(square,),)
 
             if piece.piece_type != chess.KING and not board.is_attacked_by(
                 color,
                 square,
             ):
-                undefended.append(chess.square_name(square,),)
+                undefended_piece_squares.append(chess.square_name(square,),)
 
             targets = [
                 chess.square_name(target,)
@@ -83,7 +86,7 @@ def calculate_features(fen: str,) -> dict:
             ]
 
             if len(targets,) >= 2:
-                forks.append({
+                fork_candidates.append({
                     "attacker": chess.square_name(square,),
                     "targets": targets,
                     "is_forced_win": False,
@@ -93,14 +96,14 @@ def calculate_features(fen: str,) -> dict:
             "material_points": sum((PIECE_POINTS[piece.piece_type]
                 for piece in pieces.values()
                 if piece.color == color),),
-            "isolated_pawns": isolated,
-            "passed_pawns": passed,
+            "isolated_pawns": isolated_pawn_squares,
+            "passed_pawns": passed_pawn_squares,
             "doubled_pawn_files": [
                 chess.FILE_NAMES[index] for index in range(8,) if pawn_files.count(index,) > 1
             ],
-            "pinned_pieces": pinned,
-            "undefended_pieces": undefended,
-            "fork_candidates": forks,
+            "pinned_pieces": pinned_piece_squares,
+            "undefended_pieces": undefended_piece_squares,
+            "fork_candidates": fork_candidates,
             "has_bishop_pair": len(board.pieces(
                 chess.BISHOP,
                 color,

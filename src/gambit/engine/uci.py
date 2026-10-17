@@ -2,7 +2,7 @@ from typing import NotRequired, TypedDict
 
 import chess
 
-class EngineLine(TypedDict):
+class EngineLine(TypedDict,):
     centipawns: int | None
     mate_in: int | None
     pv: list[chess.Move]
@@ -52,10 +52,12 @@ def parse_analysis_line(
         "multipv",
         default=1,
     )
+
     score_index = get_uci_token_index(
         tokens,
         "score",
     )
+
     pv_index = get_uci_token_index(
         tokens,
         "pv",

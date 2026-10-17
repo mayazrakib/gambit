@@ -20,7 +20,7 @@ from gambit.engine.client import EngineLine, StockfishClient
 from gambit.game import service
 from gambit.main import mcp
 
-class RecordingEngine(StockfishClient):
+class RecordingEngine(StockfishClient,):
     def __init__(
         self,
         scores: dict[
@@ -30,6 +30,7 @@ class RecordingEngine(StockfishClient):
     ) -> None:
         super().__init__()
         self.scores = scores or {}
+
         self.calls: list[tuple[
             str,
             int,
@@ -43,6 +44,7 @@ class RecordingEngine(StockfishClient):
         nodes: int,
     ) -> list[EngineLine]:
         self.calls.append((board.fen(), nodes, multipv),)
+
         score = self.scores.get(
             board.ply(),
             0,
@@ -53,13 +55,15 @@ class RecordingEngine(StockfishClient):
             for rank, move in enumerate(list(board.legal_moves,)[:multipv],)
         ]
 
-class GameParsingTests(unittest.TestCase):
+class GameParsingTests(unittest.TestCase,):
     def test_bom_and_windows_line_endings(self,) -> None:
         game = service.parse_game('\ufeff[Event "Test"]\r\n\r\n1.e4 e5 *',)
+
         self.assertEqual(
             game.headers["Event"],
             "Test",
         )
+
         self.assertEqual(
             len(game.moves,),
             2,
@@ -67,32 +71,41 @@ class GameParsingTests(unittest.TestCase):
 
     def test_metadata_and_missing_optional_fields(self,) -> None:
         game = service.parse_game('[Event "Test"]\n\n1. e4 $1 {hi [%clk 0:04:58.5] [%emt 0:00:01.2]} e5 2.Nf3',)
+
         self.assertEqual(
             game.headers,
             {"Event": "Test",},
         )
+
         self.assertIsNone(game.result,)
+
         self.assertEqual(
             [move.ply for move in game.moves],
             [1, 2, 3,],
         )
+
         self.assertEqual(
             [move.move_number for move in game.moves],
             [1, 1, 2,],
         )
+
         self.assertEqual(
             game.moves[0].clock_seconds,
             298.5,
         )
+
         self.assertEqual(
             game.moves[0].elapsed_move_seconds,
             1.2,
         )
+
         self.assertEqual(
             game.moves[0].numeric_annotation_glyphs,
             (1,),
         )
+
         self.assertIsNone(game.moves[1].clock_seconds,)
+
         self.assertEqual(
             game.moves[0].fen_after,
             game.moves[1].fen_before,
@@ -101,10 +114,12 @@ class GameParsingTests(unittest.TestCase):
     def test_custom_black_start_and_promotion(self,) -> None:
         game = service.parse_game('[SetUp "1"]\n[FEN "7k/8/8/8/8/8/p6K/8 b - - 0 42"]\n\n42...a1=Q',)
         move = game.moves[0]
+
         self.assertEqual(
             (move.ply, move.move_number, move.side),
             (1, 42, "black"),
         )
+
         self.assertEqual(
             move.uci,
             "a2a1q",
@@ -112,13 +127,16 @@ class GameParsingTests(unittest.TestCase):
 
     def test_castling_and_en_passant(self,) -> None:
         game = service.parse_game("1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.O-O *",)
+
         self.assertEqual(
             game.moves[-1].uci,
             "e1g1",
         )
+
         game = service.parse_game("1.e4 a6 2.e5 d5 3.exd6 *",)
         board = chess.Board(game.moves[-1].fen_after,)
         self.assertIsNone(board.piece_at(chess.D5,),)
+
         self.assertEqual(
             board.piece_at(chess.D6,),
             chess.Piece(
@@ -144,6 +162,7 @@ class GameParsingTests(unittest.TestCase):
 
     def test_header_only_game_is_inspectable(self,) -> None:
         game = service.parse_game('[Event "Unplayed"]\n\n*',)
+
         self.assertEqual(
             game.moves,
             (),
@@ -214,9 +233,10 @@ class GameParsingTests(unittest.TestCase):
         ), self.assertRaises(ValueError,):
             service.parse_game("1.e4 e5",)
 
-class GameAnalysisTests(unittest.TestCase):
+class GameAnalysisTests(unittest.TestCase,):
     def test_batch_cache_distinguishes_configuration(self,) -> None:
         engine = RecordingEngine()
+
         service.analyze_positions(
             [
                 service.PositionAnalysisRequest(
@@ -242,6 +262,7 @@ class GameAnalysisTests(unittest.TestCase):
             ],
             engine,
         )
+
         self.assertEqual(
             len(engine.calls,),
             3,
@@ -256,6 +277,7 @@ class GameAnalysisTests(unittest.TestCase):
             ).centipawns,
             -80,
         )
+
         self.assertEqual(
             service.normalize_evaluation(
                 None,
@@ -264,6 +286,7 @@ class GameAnalysisTests(unittest.TestCase):
             ).mate_in,
             -4,
         )
+
         self.assertEqual(
             service.normalize_evaluation(
                 None,
@@ -316,6 +339,7 @@ class GameAnalysisTests(unittest.TestCase):
     def test_batch_order_validation_cache_and_terminal_positions(self,) -> None:
         engine = RecordingEngine({1: 80,},)
         after = service.parse_game("1.e4",).moves[0].fen_after
+
         requests = [
             service.PositionAnalysisRequest(
                 fen,
@@ -323,22 +347,27 @@ class GameAnalysisTests(unittest.TestCase):
                 2,
             ) for fen in (after, chess.STARTING_FEN, after)
         ]
+
         results = service.analyze_positions(
             requests,
             engine,
         )
+
         self.assertEqual(
             [result.fen for result in results],
             [request.fen for request in requests],
         )
+
         self.assertEqual(
             results[0].evaluation.centipawns,
             80,
         )
+
         self.assertEqual(
             len(engine.calls,),
             2,
         )
+
         engine.calls.clear()
 
         with self.assertRaisesRegex(
@@ -364,10 +393,12 @@ class GameAnalysisTests(unittest.TestCase):
                 [service.PositionAnalysisRequest(fen,),],
                 engine,
             )[0]
+
             self.assertEqual(
                 result.evaluation.mate_in,
                 mate,
             )
+
             self.assertEqual(
                 result.principal_variations,
                 (),
@@ -386,6 +417,7 @@ class GameAnalysisTests(unittest.TestCase):
 
     def test_sequential_san_and_invalid_pv_prefix(self,) -> None:
         engine = RecordingEngine()
+
         line: EngineLine = {
             "centipawns": 10,
             "mate_in": None,
@@ -441,33 +473,41 @@ class GameAnalysisTests(unittest.TestCase):
 
     def test_two_pass_reuse_and_side_filtering(self,) -> None:
         engine = RecordingEngine({0: 80, 1: 20, 2: 20, 3: 20, 4: 20,},)
+
         result = service.analyze_game(
             "1.e4 e5 2.Nf3 Nc6",
             engine,
             initial_nodes=100,
             critical_nodes=1000,
         )
+
         self.assertEqual(
             len(engine.calls,),
             7,
         )
+
         self.assertEqual(
             [nodes for _, nodes, _ in engine.calls],
             [100,] * 5 + [1000,] * 2,
         )
+
         self.assertEqual(
             len(set(engine.calls,),),
             len(engine.calls,),
         )
+
         self.assertEqual(
             [move.was_reanalyzed for move in result.moves],
             [True, False, False, False,],
         )
+
         self.assertEqual(
             result.moves[0].centipawn_loss,
             60,
         )
+
         engine.calls.clear()
+
         result = service.analyze_game(
             "1.e4 e5 2.Nf3 Nc6",
             engine,
@@ -475,14 +515,17 @@ class GameAnalysisTests(unittest.TestCase):
             initial_nodes=100,
             critical_nodes=1000,
         )
+
         self.assertEqual(
             [move.ply for move in result.moves],
             [2, 4,],
         )
+
         self.assertEqual(
             len(engine.calls,),
             4,
         )
+
         self.assertEqual(
             result.initial_fen,
             chess.STARTING_FEN,
@@ -522,7 +565,9 @@ class GameAnalysisTests(unittest.TestCase):
             result.moves[0].centipawn_loss,
             0,
         )
+
         self.assertTrue(result.moves[0].was_reanalyzed,)
+
         self.assertEqual(
             result.moves[0].nodes,
             1000,
@@ -530,6 +575,7 @@ class GameAnalysisTests(unittest.TestCase):
 
     def test_adjacent_critical_moves_share_deep_search(self,) -> None:
         engine = RecordingEngine()
+
         result = service.analyze_game(
             "1.e4 e5",
             engine,
@@ -537,12 +583,15 @@ class GameAnalysisTests(unittest.TestCase):
             critical_nodes=1000,
             critical_loss_cp=0,
         )
+
         self.assertEqual(
             len(engine.calls,),
             6,
         )
+
         self.assertTrue(all((move.was_reanalyzed for move in result.moves),),)
         engine.calls.clear()
+
         result = service.analyze_game(
             "1.e4 e5",
             engine,
@@ -550,10 +599,12 @@ class GameAnalysisTests(unittest.TestCase):
             critical_nodes=100,
             critical_loss_cp=0,
         )
+
         self.assertEqual(
             len(engine.calls,),
             3,
         )
+
         self.assertTrue(all((not move.was_reanalyzed and move.is_critical for move in result.moves),),)
 
     def test_ranking(self,) -> None:
@@ -563,26 +614,31 @@ class GameAnalysisTests(unittest.TestCase):
             initial_nodes=1,
             critical_nodes=1,
         )
+
         self.assertEqual(
             game.moves[0].played_move_rank,
             1,
         )
+
         game = service.analyze_game(
             "1.Nf3",
             RecordingEngine(),
             initial_nodes=1,
             critical_nodes=1,
         )
+
         self.assertEqual(
             game.moves[0].played_move_rank,
             2,
         )
+
         game = service.analyze_game(
             "1.e4",
             RecordingEngine(),
             initial_nodes=1,
             critical_nodes=1,
         )
+
         self.assertIsNone(game.moves[0].played_move_rank,)
 
     def test_request_validation(self,) -> None:
@@ -682,7 +738,7 @@ class GameAnalysisTests(unittest.TestCase):
             40,
         ),)
 
-class GameReviewTests(unittest.TestCase):
+class GameReviewTests(unittest.TestCase,):
     def test_only_legal_move_is_forced(self,) -> None:
         review = service.review_game(
             '[FEN "8/8/8/8/8/1k6/r7/K7 w - - 0 1"]\n\n1.Kb1',
@@ -690,17 +746,21 @@ class GameReviewTests(unittest.TestCase):
             initial_nodes=1,
             critical_nodes=1,
         )
+
         move = review.moves[0]
         self.assertTrue(move.is_forced,)
         self.assertTrue(move.features_before.is_check,)
+
         self.assertEqual(
             move.legal_move_count,
             1,
         )
+
         self.assertEqual(
             move.classification,
             "forced",
         )
+
         self.assertEqual(
             review.summaries[0].forced_moves,
             1,
@@ -748,6 +808,7 @@ class GameReviewTests(unittest.TestCase):
             ),
             "best",
         )
+
         self.assertEqual(
             service.classify_move(
                 move,
@@ -763,7 +824,9 @@ class GameReviewTests(unittest.TestCase):
             initial_nodes=1,
             critical_nodes=1,
         )
+
         move = review.moves[0].analysis
+
         lost_mate = replace(
             move,
             evaluation_before=service.EngineEvaluation(
@@ -777,6 +840,7 @@ class GameReviewTests(unittest.TestCase):
             ),
             centipawn_loss=None,
         )
+
         self.assertEqual(
             service.classify_move(
                 lost_mate,
@@ -784,6 +848,7 @@ class GameReviewTests(unittest.TestCase):
             ),
             "blunder",
         )
+
         allows_mate = replace(
             move,
             evaluation_after=service.EngineEvaluation(
@@ -793,6 +858,7 @@ class GameReviewTests(unittest.TestCase):
             ),
             centipawn_loss=None,
         )
+
         self.assertEqual(
             service.classify_move(
                 allows_mate,
@@ -800,24 +866,29 @@ class GameReviewTests(unittest.TestCase):
             ),
             "blunder",
         )
+
         mate_review = replace(
             review.moves[0],
             analysis=lost_mate,
             classification="blunder",
         )
+
         summary = service.summarize_player(
             "white",
             [mate_review,],
         )
+
         self.assertEqual(
             summary.blunders,
             1,
         )
+
         self.assertIsNone(summary.average_centipawn_loss,)
         self.assertIsNone(summary.largest_loss_ply,)
 
     def test_review_analyzes_once_and_filters_summaries(self,) -> None:
         engine = RecordingEngine({0: 80, 1: 20, 2: 20, 3: -60,},)
+
         review = service.review_game(
             "1.e4 e5 2.Nf3",
             engine,
@@ -825,49 +896,60 @@ class GameReviewTests(unittest.TestCase):
             initial_nodes=10,
             critical_nodes=10,
         )
+
         self.assertEqual(
             len(engine.calls,),
             4,
         )
+
         self.assertEqual(
             len(review.summaries,),
             1,
         )
+
         summary = review.summaries[0]
+
         self.assertEqual(
             summary.side,
             "white",
         )
+
         self.assertEqual(
             summary.move_count,
             2,
         )
+
         self.assertEqual(
             summary.average_centipawn_loss,
             70,
         )
+
         self.assertEqual(
             summary.median_centipawn_loss,
             70,
         )
+
         self.assertEqual(
             summary.largest_centipawn_loss,
             80,
         )
+
         self.assertEqual(
             summary.largest_loss_ply,
             3,
         )
+
         self.assertEqual(
             summary.critical_plies,
             (1, 3),
         )
+
         self.assertEqual(
             review.moves[0].features_before.legal_move_count,
             20,
         )
 
-class GameToolTests(unittest.IsolatedAsyncioTestCase):
+class GameToolTests(unittest.IsolatedAsyncioTestCase,):
     async def test_new_tools_serialize_through_mcp(self,) -> None:
         engine = RecordingEngine()
 
@@ -898,6 +980,7 @@ class GameToolTests(unittest.IsolatedAsyncioTestCase):
                             arguments,
                         ),
                     )
+
                     self.assertFalse(result.is_error,)
                     self.assertIsNotNone(result.structured_content,)
 
@@ -920,8 +1003,10 @@ class GameToolTests(unittest.IsolatedAsyncioTestCase):
             ):
                 await session.initialize()
                 tools = await session.list_tools()
+
                 self.assertTrue({"parse_game", "analyze_positions", "analyze_game", "review_game",}
                     <= {tool.name for tool in tools.tools},)
+
                 result = cast(
                     CallToolResult,
                     await session.call_tool(
@@ -934,17 +1019,19 @@ class GameToolTests(unittest.IsolatedAsyncioTestCase):
                         },
                     ),
                 )
+
                 self.assertFalse(
                     result.is_error,
                     result.content,
                 )
+
                 self.assertEqual(
-                    result.structured_content["moves"][-1]["analysis"]["evaluation_after"][
-                        "mating_side"
-                    ],
+                    result.structured_content["moves"][-1]["analysis"]["evaluation_after"]["mating_side"],
                     "black",
                 )
+
                 self.assertTrue(result.structured_content["moves"][-1]["features_after"]["is_checkmate"],)
+
                 result = cast(
                     CallToolResult,
                     await session.call_tool(
@@ -952,22 +1039,26 @@ class GameToolTests(unittest.IsolatedAsyncioTestCase):
                         {"pgn": "1.e4 garbage",},
                     ),
                 )
+
                 self.assertTrue(result.is_error,)
+
                 self.assertIn(
                     "Malformed PGN",
                     str(result.content,),
                 )
 
-class StockfishLifecycleTests(unittest.TestCase):
+class StockfishLifecycleTests(unittest.TestCase,):
     def test_invalid_uci_continuation_and_bestmove(self,) -> None:
         engine = StockfishClient()
         engine.output.put("info depth 1 multipv 1 score cp 10 pv e2e4 e7e5 invalid",)
         engine.output.put("bestmove e2e4",)
         lines = engine.read_analysis(chess.Board(),)
+
         self.assertEqual(
             [move.uci() for move in lines[0]["pv"]],
             ["e2e4", "e7e5",],
         )
+
         engine.output.put("bestmove e7e5",)
 
         with self.assertRaisesRegex(
@@ -1046,6 +1137,7 @@ class StockfishLifecycleTests(unittest.TestCase):
                 1,
                 100,
             )
+
             process = engine.process
             errors: list[Exception] = []
 
@@ -1065,6 +1157,7 @@ class StockfishLifecycleTests(unittest.TestCase):
                     errors.append(exception,)
 
             fens = [move.fen_after for move in service.parse_game("1.e4 e5 2.Nf3 Nc6",).moves]
+
             threads = [threading.Thread(
                 target=analyze,
                 args=(fen,),
@@ -1077,14 +1170,17 @@ class StockfishLifecycleTests(unittest.TestCase):
                 thread.join(timeout=5,)
 
             self.assertFalse(any((thread.is_alive() for thread in threads),),)
+
             self.assertEqual(
                 errors,
                 [],
             )
+
             self.assertIs(
                 engine.process,
                 process,
             )
+
             self.assertEqual(
                 Counter((key[2] for key in engine.cache),),
                 {100: 1, 200: 4,},

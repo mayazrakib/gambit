@@ -73,7 +73,7 @@ def create_fake_stockfish(directory: str,) -> str:
 
     return stockfish_path
 
-class PositionToolTests(unittest.IsolatedAsyncioTestCase):
+class PositionToolTests(unittest.IsolatedAsyncioTestCase,):
     async def test_server_handles_calls_over_stdio(self,) -> None:
         server = StdioServerParameters(
             command=sys.executable,
@@ -88,6 +88,7 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
             ) as session,
         ):
             await session.initialize()
+
             result = cast(
                 CallToolResult,
                 await session.call_tool(
@@ -97,6 +98,7 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result.is_error,)
+
         self.assertEqual(
             result.structured_content["legal_move_count"],
             20,
@@ -134,10 +136,12 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
                                 },
                             ),
                         )
+
                         self.assertFalse(
                             result.is_error,
                             result.content,
                         )
+
                         fen = result.structured_content["resulting_position"]["fen"]
 
         self.assertEqual(
@@ -153,7 +157,9 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
                 {"fen": STARTING_FEN,},
             ),
         )
+
         self.assertFalse(result.is_error,)
+
         self.assertEqual(
             result.structured_content["legal_move_count"],
             20,
@@ -167,12 +173,15 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
                 {"fen": STARTING_FEN,},
             ),
         )
+
         self.assertFalse(result.is_error,)
         moves = result.structured_content["moves"]
+
         self.assertEqual(
             len(moves,),
             20,
         )
+
         self.assertIn(
             {"san": "e4", "uci": "e2e4",},
             moves,
@@ -200,10 +209,12 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result.is_error,)
+
         self.assertEqual(
             result.structured_content["lines"][0]["evaluation"]["pawns"],
             0.25,
         )
+
         self.assertEqual(
             result.structured_content["lines"][0]["principal_variation"][0],
             {"san": "e4", "uci": "e2e4",},
@@ -236,10 +247,12 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result.is_error,)
+
         self.assertEqual(
             result.structured_content["move"],
             {"san": "e4", "uci": "e2e4",},
         )
+
         self.assertEqual(
             result.structured_content["best_replies"][0]["principal_variation"][0],
             {"san": "e5", "uci": "e7e5",},
@@ -247,6 +260,7 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_recognize_chessboard_can_be_called_through_mcp(self,) -> None:
         image = base64.b64encode((FIXTURES / "fen2image-italian.png").read_bytes(),).decode("ascii",)
+
         result = cast(
             CallToolResult,
             await mcp.call_tool(
@@ -254,16 +268,20 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
                 {"image": image, "side_to_move": "black",},
             ),
         )
+
         self.assertFalse(
             result.is_error,
             result.content,
         )
+
         self.assertEqual(
             result.structured_content["fen"],
             f"{ITALIAN_PLACEMENT} b - - 0 1",
         )
+
         self.assertTrue(result.structured_content["reliable"],)
         self.assertTrue(result.structured_content["plausible"],)
+
         self.assertGreater(
             result.structured_content["confidence"]["minimum"],
             0.7,
@@ -298,10 +316,12 @@ class PositionToolTests(unittest.IsolatedAsyncioTestCase):
             result.is_error,
             result.content,
         )
+
         self.assertEqual(
             result.structured_content["recognition"]["piece_placement"],
             ITALIAN_PLACEMENT,
         )
+
         self.assertEqual(
             result.structured_content["analysis"]["lines"][0]["principal_variation"][0],
             {"san": "Bxf7+", "uci": "c4f7",},

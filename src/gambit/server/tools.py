@@ -12,8 +12,10 @@ from gambit.infrastructure.corpus import load_bundled_openings
 from gambit.infrastructure.storage import Store
 from gambit.knowledge.base import Knowledge
 from gambit.learning.openings import OpeningPlans
+from gambit.learning.practice import Practice
 from gambit.learning.progressive import ProgressiveAnalysis
 from gambit.learning.service import Learning
+from gambit.learning.sessions import TutorSessions
 from gambit.learning.speech import Speech, create_speech_plan
 from gambit.learning.training import (
     LESSONS,
@@ -22,6 +24,7 @@ from gambit.learning.training import (
     validate_training_id,
 )
 from gambit.learning.tutoring import Tutor
+from gambit.server.dataset_tools import DatasetJobs, register_dataset_tools
 
 class Runtime:
     def __init__(
@@ -29,36 +32,84 @@ class Runtime:
         engine: EnginePool | None = None,
     ) -> None:
         self.configuration = load_configuration()
-        self.store = Store(self.configuration.database_path,)
+
+        self.store = Store(
+            self.configuration.database_path,
+            self.configuration.runtime_directory,
+        )
+
         self.analysis = AnalysisService(
             self.configuration,
             self.store,
             engine,
         )
+
         self.knowledge = Knowledge(self.store,)
+
         self.training = Training(
             self.store,
             self.analysis,
         )
+
         self.learning = Learning(
             self.analysis,
             self.store,
         )
+
         self.opening_plans = OpeningPlans(self.store,)
         self.progressive = ProgressiveAnalysis(self.analysis,)
+
+        self.sessions = TutorSessions(
+            self.analysis,
+            self.store,
+        )
+
+        self.sessions.progressive = self.progressive
+
+        self.practice = Practice(
+            self.analysis,
+            self.store,
+            self.sessions,
+        )
+
+        self.dataset_service = None
+        self.dataset_lock = threading.RLock()
+        self.data_jobs = DatasetJobs(self,)
+
         self.speech = Speech(
             self.configuration.speech_executable,
             self.configuration.speech_directory,
         )
+
         self.tutor = Tutor(
             self.analysis,
             self.knowledge,
             self.store,
+            sessions=self.sessions,
+            progressive=self.progressive,
         )
 
+    def get_datasets(self,):
+        with self.dataset_lock:
+            if self.dataset_service is None:
+                from gambit.infrastructure.data_service import DatasetService
+
+                self.dataset_service = DatasetService(self.configuration.runtime_directory,)
+                self.practice.corpus = self.dataset_service.corpus
+
+            return self.dataset_service
+
+    def get_corpus(self,):
+        return self.get_datasets().corpus
+
     def close(self,) -> None:
+        self.data_jobs.close()
         self.progressive.close()
         self.analysis.close()
+
+        if self.dataset_service is not None:
+            self.dataset_service.close()
+
         self.store.close()
 
 class RuntimeOwner:
@@ -86,6 +137,18 @@ def register_tools(
     from gambit.server.extended_tools import register_extended_tools
 
     register_extended_tools(
+        server,
+        owner,
+    )
+
+    from gambit.server.tutoring_tools import register_tutoring_tools
+
+    register_tutoring_tools(
+        server,
+        owner,
+    )
+
+    register_dataset_tools(
         server,
         owner,
     )
@@ -320,6 +383,7 @@ def register_tools(
         from uuid import uuid4
         validate_training_id(learner_id,)
         runtime = owner.get_runtime()
+
         repertoire = runtime.knowledge.find_moves(
             fen,
             True,
@@ -337,6 +401,7 @@ def register_tools(
             "status": "active",
             "has_failed": False,
         }
+
         runtime.store.put(
             "session",
             drill["id"],
@@ -395,10 +460,12 @@ def register_tools(
                 parse_board(session["fen"],),
                 move,
             )
+
             is_correct = candidate.uci() in session["expected_moves"]
 
             if is_correct:
                 session["status"] = "completed"
+
                 runtime.training.record_attempt(
                     session["learner_id"],
                     get_repertoire_progress_id(session["fen"],),
@@ -486,6 +553,7 @@ def register_tools(
         object,
     ]:
         runtime = owner.get_runtime()
+
         records = runtime.store.list_records(
             "attempt",
             100,
@@ -600,6 +668,13 @@ def register_tools(
         candidates: list[str] | None = None,
         move: str | None = None,
         is_compact: bool = True,
+        session_id: str | None = None,
+        expected_revision: int | None = None,
+        operation_id: str | None = None,
+        question: str | None = None,
+        detail: str | None = None,
+        response_mode: str = "full",
+        known_evidence_ids: list[str] | None = None,
     ) -> dict[
         str,
         object,
@@ -614,6 +689,13 @@ def register_tools(
             candidates,
             move,
             is_compact,
+            session_id,
+            expected_revision,
+            operation_id,
+            question,
+            detail,
+            response_mode,
+            known_evidence_ids,
         )
 
     @server.tool(description="Create interruptible speech segments and legal SAN/UCI pronunciations.",)

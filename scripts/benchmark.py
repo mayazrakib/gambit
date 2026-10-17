@@ -14,6 +14,7 @@ from gambit.infrastructure.storage import Store
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="gambit-benchmark-",) as directory:
         store = Store(str(Path(directory,) / "benchmark.sqlite3",),)
+
         service = AnalysisService(
             Configuration(worker_count=1,),
             store,
@@ -33,17 +34,21 @@ def main() -> None:
 
                 for fen in positions:
                     started = perf_counter()
+
                     service.evaluate(
                         fen,
                         profile,
                     )
+
                     elapsed_ms.append((perf_counter() - started) * 1000,)
 
                 cached_started = perf_counter()
+
                 service.evaluate(
                     positions[-1],
                     profile,
                 )
+
                 samples.append({"profile": profile, "first_position_ms": elapsed_ms[0], "median_ms": statistics.median(elapsed_ms,), "maximum_ms": max(elapsed_ms,), "cached_ms": (perf_counter() - cached_started) * 1000, "position_count": len(positions,),},)
 
             print(json.dumps(

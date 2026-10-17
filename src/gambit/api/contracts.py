@@ -1,9 +1,9 @@
 from typing import Literal, NotRequired, TypedDict
 
-class VersionedResponse(TypedDict):
+class VersionedResponse(TypedDict,):
     schema_version: int
 
-class EngineIdentity(TypedDict):
+class EngineIdentity(TypedDict,):
     name: str
     version: str | None
     binary_sha256: str | None
@@ -12,15 +12,16 @@ class EngineIdentity(TypedDict):
     hash_mb_per_worker: int
     is_reproducible: bool
 
-class EngineScore(TypedDict):
+class EngineScore(TypedDict,):
     centipawns: int | None
     mate_in: int | None
+
     mating_side: Literal[
         "white",
         "black",
     ] | None
 
-class VariationEvidence(TypedDict):
+class VariationEvidence(TypedDict,):
     rank: int
     evaluation: EngineScore
     moves_uci: list[str]
@@ -29,7 +30,7 @@ class VariationEvidence(TypedDict):
     actual_nodes: int | None
     engine_time_ms: int | None
 
-class PositionEvidence(VersionedResponse):
+class PositionEvidence(VersionedResponse,):
     is_compact: NotRequired[bool]
     id: str
     fen: str
@@ -42,12 +43,13 @@ class PositionEvidence(VersionedResponse):
     engine: EngineIdentity
     has_complete_history: bool
     history_scope: str
+
     evidence_status: Literal[
         "preliminary",
         "deeper search",
     ]
 
-class AnalysisMetrics(VersionedResponse):
+class AnalysisMetrics(VersionedResponse,):
     search_count: int
     cache_hits: int
     pending_count: int
@@ -57,21 +59,21 @@ class AnalysisMetrics(VersionedResponse):
     queue_p95_ms: float | None
     has_reserved_interactive_capacity: bool
 
-class ProgressiveStart(VersionedResponse):
+class ProgressiveStart(VersionedResponse,):
     request_id: str
     context_id: str
     position_fen: str
     status: str
     preliminary: PositionEvidence
 
-class ProgressiveStatus(VersionedResponse):
+class ProgressiveStatus(VersionedResponse,):
     request_id: str
     context_id: str
     status: str
     analysis_id: str | None
     error: str | None
 
-class GameJob(VersionedResponse):
+class GameJob(VersionedResponse,):
     id: str
     status: str
     completed_searches: int
@@ -81,7 +83,7 @@ class GameJob(VersionedResponse):
     analysis_id: NotRequired[str]
     error: NotRequired[str | None]
 
-class ConceptProgress(TypedDict):
+class ConceptProgress(TypedDict,):
     id: str
     learner_id: str
     concept: str
@@ -90,10 +92,10 @@ class ConceptProgress(TypedDict):
     interval_days: int
     due_at: str
 
-class ConceptReport(VersionedResponse):
+class ConceptReport(VersionedResponse,):
     concepts: list[ConceptProgress]
 
-class ReviewLesson(TypedDict):
+class ReviewLesson(TypedDict,):
     id: str
     learner_id: str
     analysis_id: str
@@ -105,11 +107,11 @@ class ReviewLesson(TypedDict):
     source: str
     question: str
 
-class ReviewLessons(VersionedResponse):
+class ReviewLessons(VersionedResponse,):
     lessons: list[ReviewLesson]
     grouping: str
 
-class OpeningPlanRecord(VersionedResponse):
+class OpeningPlanRecord(VersionedResponse,):
     id: str
     position_key: str
     name: str
@@ -124,7 +126,7 @@ class OpeningPlanRecord(VersionedResponse):
     evidence_kind: str
     is_engine_verified: bool
 
-class OpeningStatistics(VersionedResponse):
+class OpeningStatistics(VersionedResponse,):
     id: NotRequired[str]
     position_key: str
     move_uci: str
@@ -135,12 +137,12 @@ class OpeningStatistics(VersionedResponse):
     source_date: str
     population: str
 
-class OpeningPlanReport(VersionedResponse):
+class OpeningPlanReport(VersionedResponse,):
     plans: list[OpeningPlanRecord]
     practical_statistics: list[OpeningStatistics]
     caveat: str
 
-class CoverageSource(TypedDict):
+class CoverageSource(TypedDict,):
     collection: str
     source: str | None
     records: int
@@ -148,7 +150,7 @@ class CoverageSource(TypedDict):
     first_imported_at: str
     last_updated_at: str
 
-class OpeningCoverage(VersionedResponse):
+class OpeningCoverage(VersionedResponse,):
     sources: list[CoverageSource]
     is_exhaustive_chess_coverage: bool
     source_limit: int

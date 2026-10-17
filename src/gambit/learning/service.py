@@ -69,6 +69,7 @@ class Learning:
         history: list[str] | None = None,
     ) -> TeachingQuestion:
         validate_training_id(learner_id,)
+
         board = build_board(
             fen,
             history,
@@ -79,6 +80,7 @@ class Learning:
 
         concept = diagnose_concept(board,)
         session_id = str(uuid4(),)
+
         self.store.put(
             "teaching",
             session_id,
@@ -128,11 +130,14 @@ class Learning:
                 "instant",
                 session["history"],
             )
+
             line = analysis["principal_variations"][0]
+
             board = build_board(
                 session["root_fen"],
                 session["history"],
             )
+
             move = parse_move(
                 board,
                 line["moves_uci"][0],
@@ -158,6 +163,7 @@ class Learning:
                 current["hint_level"],
                 level,
             )
+
             self.store.put(
                 "teaching",
                 session_id,
@@ -195,6 +201,7 @@ class Learning:
             session["history"],
             profile=profile,
         )
+
         is_accepted = assessment.classification == "acceptable"
         is_conclusive = assessment.classification != "uncertain"
         progress_id = hashlib.sha256(f"{session['learner_id']}:{session['concept']}".encode(),).hexdigest()
@@ -224,21 +231,25 @@ class Learning:
                 progress["attempts"] += 1
                 has_independent_success = is_accepted and current["hint_level"] == 0
                 progress["independent_successes"] += int(has_independent_success,)
+
                 progress["interval_days"] = min(
                     30,
                     progress["interval_days"] * 2,
                 ) if has_independent_success else 1
 
             progress["due_at"] = (datetime.now(UTC,) + timedelta(days=progress["interval_days"],)).isoformat()
+
             self.store.put(
                 "concept",
                 progress_id,
                 progress,
             )
+
             current.update(
                 status="completed" if is_conclusive else "active",
                 assessment=asdict(assessment,),
             )
+
             self.store.put(
                 "teaching",
                 session_id,
@@ -297,6 +308,7 @@ class Learning:
             raise ValueError("Choose white or black for the learner's side.",)
 
         validate_training_id(learner_id,)
+
         report = self.store.get(
             "analysis",
             analysis_id,
@@ -307,30 +319,54 @@ class Learning:
 
         lessons = []
         history = []
+        first_missed_decision = None
 
         for entry in report["moves"]:
             move = entry.get(
                 "analysis",
                 entry,
             )
+
             board = build_board(
                 report["initial_fen"],
                 history,
             )
+
             is_learner_turn = board.turn == (side == "white")
             loss = move.get("centipawn_loss",) or 0
+
+            if is_learner_turn and loss > 30 and first_missed_decision is None:
+                first_missed_decision = {"ply": len(history,) + 1, "fen": board.fen(), "move_uci": move["uci"], "observed_loss_centipawns": loss, "analysis_id": analysis_id, "status": "earliest observed opportunity requiring independent candidate confirmation",}
 
             if is_learner_turn and loss >= 100 and len(lessons,) < 20:
                 lesson_id = hashlib.sha256(f"{analysis_id}:{learner_id}:{len(history,)}".encode(),).hexdigest()
                 lesson = {"id": lesson_id, "learner_id": learner_id, "analysis_id": analysis_id, "topic": diagnose_concept(board,), "root_fen": report["initial_fen"], "history": list(history,), "fen": board.fen(), "status": "due", "source": "personal game review", "question": "Find an improvement and verify it in a teaching session.",}
+
                 self.store.put(
                     "lesson",
                     lesson_id,
                     lesson,
                     is_immutable=True,
                 )
+
                 lessons.append(lesson,)
+                event_id = "review-" + lesson_id
+
+                existing_event = self.store.get(
+                    "learning_event",
+                    event_id,
+                )
+
+                if existing_event is None:
+                    self.store.put(
+                        "learning_event",
+                        event_id,
+                        {"id": event_id, "learner_id": learner_id, "source_id": lesson_id, "mode": "personal game review", "themes": [lesson["topic"],], "root_fen": report["initial_fen"], "history": list(history,), "fen": board.fen(), "move_uci": move["uci"], "classification": "uncertain", "observed_loss_centipawns": loss, "is_confirmed": False, "is_accepted": False, "is_assisted": False, "due_at": datetime.now(UTC,).isoformat(), "system_created_at": datetime.now(UTC,).isoformat(), "analysis_id": analysis_id,},
+                    )
+
+                if first_missed_decision["ply"] == len(history,) + 1:
+                    first_missed_decision["lesson_id"] = lesson_id
 
             history.append(move["uci"],)
 
-        return {"schema_version": 1, "lessons": lessons, "grouping": "Repeated topics identify candidates for focused practice, not proven causal diagnoses.",}
+        return {"schema_version": 1, "lessons": lessons, "first_missed_decision": first_missed_decision, "grouping": "Repeated topics identify candidates for focused practice, not proven causal diagnoses.",}

@@ -108,6 +108,7 @@ class Training:
                 get_repertoire_progress_id,
                 deterministic=True,
             )
+
             row = self.store.connection.execute(
                 """
                     SELECT json_extract(repertoire.payload, '$.fen') FROM record AS repertoire
@@ -195,6 +196,7 @@ class Training:
 
             board = parse_board(row["FEN"],)
             board.push_uci(moves[0],)
+
             records.append({
                 "id": row["PuzzleId"],
                 "fen": board.fen(),
@@ -226,10 +228,12 @@ class Training:
         theme: str = "",
     ) -> dict:
         validate_training_id(learner_id,)
+
         profile = self.store.get(
             "profile",
             learner_id,
         ) or {"rating": 1200,}
+
         now = datetime.now(UTC,).isoformat()
 
         with self.store.lock:
@@ -261,6 +265,7 @@ class Training:
             }
 
         puzzle = json.loads(row[0],)
+
         session = {
             "id": str(uuid4(),),
             "learner_id": learner_id,
@@ -270,6 +275,7 @@ class Training:
             "has_failed": False,
             "status": "active",
         }
+
         self.store.put(
             "session",
             session["id"],
@@ -300,7 +306,9 @@ class Training:
                 "puzzle",
                 snapshot["puzzle_id"],
             )
+
             board = parse_board(snapshot["fen"],)
+
             candidate = parse_move(
                 board,
                 move,
@@ -330,6 +338,7 @@ class Training:
                     if assessment.classification == "acceptable":
                         current["status"] = "alternative accepted"
                         current["alternative_assessment"] = asdict(assessment,)
+
                         self.store.put(
                             "session",
                             session_id,
@@ -354,15 +363,19 @@ class Training:
                 "puzzle",
                 session["puzzle_id"],
             )
+
             board = parse_board(session["fen"],)
+
             candidate = parse_move(
                 board,
                 move,
             )
+
             expected = puzzle["solution"][session["ply"]]
 
             if candidate.uci() != expected:
                 session["has_failed"] = True
+
                 self.store.put(
                     "session",
                     session_id,
@@ -388,6 +401,7 @@ class Training:
 
             if session["ply"] >= len(puzzle["solution"],):
                 session["status"] = "completed"
+
                 self.record_attempt(
                     session["learner_id"],
                     puzzle["id"],
@@ -442,6 +456,7 @@ class Training:
                 return previous
 
             streak = previous["streak"] + 1 if was_successful else 0
+
             interval_days = min(
                 90,
                 2 ** min(
@@ -449,9 +464,11 @@ class Training:
                     7,
                 ),
             ) if was_successful else 0
+
             due = datetime.now(UTC,) + (
                 timedelta(days=interval_days,) if was_successful else timedelta(minutes=10,)
             )
+
             attempt = {
                 "learner_id": learner_id,
                 "puzzle_id": puzzle_id,

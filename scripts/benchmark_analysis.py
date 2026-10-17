@@ -29,6 +29,7 @@ def run_benchmark(
     for _ in range(iterations,):
         for position in positions:
             store = Store(":memory:",)
+
             service = AnalysisService(
                 configuration,
                 store,
@@ -43,10 +44,12 @@ def run_benchmark(
 
                 for phase in ("cold", "warm"):
                     started = perf_counter()
+
                     report = service.evaluate(
                         position["fen"],
                         "quick",
                     )
+
                     timings[phase].append((perf_counter() - started) * 1000,)
                     board = chess.Board(position["fen"],)
                     assert board.is_game_over() == position["is_terminal"]
@@ -69,6 +72,7 @@ def run_benchmark(
                     position["fen"],
                     intent="hint",
                 )
+
                 assert hint["engine_evidence"]["is_solution_hidden"]
                 assert not hint["board_directives"]
                 assert not hint["speech_plan"]["pronunciations"]
@@ -84,6 +88,7 @@ def run_benchmark(
 
     for phase, samples in timings.items():
         ordered = sorted(samples,)
+
         summaries[phase] = {
             "samples": len(samples,),
             "median_ms": median(samples,),
@@ -98,11 +103,13 @@ def run_benchmark(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark cold and warm local analysis and run fixed chess-quality checks.",)
+
     parser.add_argument(
         "--iterations",
         type=int,
         default=3,
     )
+
     arguments = parser.parse_args()
 
     if not 1 <= arguments.iterations <= 20:
