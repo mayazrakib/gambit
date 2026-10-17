@@ -1,47 +1,51 @@
 ---
 name: chess_tutor
-description: "Teach chess with Gambit using reusable engine evidence, guided calculation, personal game review, and targeted practice."
+description: "Use Gambit to verify chess claims and obtain structured engine evidence, openings, puzzles, and attributed game information."
 ---
 
 # `SKILL.md`
 
 ## 1. Scope
 
-Artificial intelligence (AI) agents MUST follow these rules and instructions when providing chess instruction, position analysis, move feedback, or chess practice.
+Artificial intelligence (AI) agents MUST follow these rules and instructions when using Gambit for chess instruction, position analysis, move feedback, or chess practice.
 
-This skill supplements [Chess Tutor Rules](references/chess_tutor_rules.md). Use only interfaces and arguments exposed by connected schemas.
+This skill supplements [Chess Tutor Rules](references/chess_tutor_rules.md). Connected schemas establish capabilities. Gambit supplies evidence; the client authors explanations and audio.
 
-## 2. Fast Turn
+## 2. Evidence Workflow
 
-Resolve mode, root position, known history, branch, and objective from context. Ask only for missing information that materially changes the answer. Preserve the mainline during hypothetical analysis.
+Resolve the actual position and known history from context. Ask for missing information only when it changes the answer. Keep hypothetical analysis separate from the mainline.
 
-Prefer one `create_tutor_turn` with instant analysis, the proposed move, history, and relevant candidates. In supported sessions, send the expected revision, delta response mode, and known evidence references; mutations also need an operation identifier.
+Use `get_position` for board state, material, legal moves, and optional typed rules predicates. Supply a FEN with optional history, or a live game identifier with its expected revision. An optional continuation is hypothetical and does not change the game. Use `get_evidence` for selected sections: facts, analysis, openings, statistics, cloud, and tablebase. Defaults are local facts and instant preliminary analysis. External sections are opt-in. Request only needed sections; use deeper analysis when the claim needs it.
 
-Answer directly in direct mode. In guided mode, give one useful finding and a focused question. Reuse returned speech guidance without extra synthesis calls for ChatGPT Voice.
-
-Reuse matching evidence. Retrieve missing detail with `get_analysis`; search for new candidates or unsupported claims. Read completed background evidence on a relevant later turn without duplicate refinement or polling before the first answer.
+Reuse matching evidence. Retrieve full temporary evidence with `get_analysis`. A missing reference is expired, not a result. Preserve position identity, history scope, score perspective, bounds, provenance, and limitations. Verify concrete claims before explaining them. Distinguish attacks from captures, observed gains from forced wins, engine preferences from proofs, and source advice from verified facts.
 
 ## 3. Tool Routing
 
-| Task | Interface |
+| Need | Interface |
 |---|---|
-| Persistent branches | `start_tutor_session`, `get_tutor_session`, `navigate_tutor_session` |
-| Reasoning and confidence | `submit_tutor_reasoning` |
-| Plans or practical alternatives | `assess_tutor_plan`, `compare_practical_moves` |
-| Calculation, refutation, defense, openings, prediction, transfer, endgames | `start_practice`, `act_practice`, `get_practice` |
-| Retention and patterns | `get_due_reviews`, `get_learner_patterns`, `get_learning_dashboard` |
-| Examples and personal games | `search_chess_material`, then selected `get_chess_game` |
-| Study export | `export_tutor_study` |
-| Whole-game review | Background analysis jobs |
+| Board image recognition | `read_board`, then verify reliability before analysis |
+| PGN validation | `read_pgn` |
+| Single or batch position analysis | `analyze_position` |
+| Move assessment or comparison | `analyze_move`, `compare_moves` |
+| Local opening identification | `find_openings`, `get_opening` |
+| Masters or Lichess outcomes and examples | `get_opening_stats` |
+| Public puzzle | `get_puzzle` |
+| Selected public game or study chapter | `get_game`, `get_study` |
+| Existing cloud analysis | `get_cloud_analysis` |
+| Remote endgame evidence | `get_tablebase` |
+| Explicit Chess.com account and month | `get_chesscom_games` |
+| Whole-game analysis and classifications | `analyze_game` |
+| Background game analysis | `start_game_analysis`, `get_analysis_job`, `get_analysis`, `cancel_analysis_job` |
+| Active board evidence and annotations | `analyze_live_game`, `annotate_live_game` |
 
-Inspect action choices when needed. Read current state after revision conflicts; reuse operation identifiers only for identical retries. If newer interfaces are absent, use legacy teaching or verification tools and state persistence limits.
+Opening statistics must preserve population, filters, and sample size. Opening classifications do not contain exhaustive theory. Studies require explicit public study and chapter identifiers. Missing cloud analysis does not start remote engine work. API failures must remain visible.
 
-## 4. Learning Cycle
+`analyze_position` accepts either `fen` with optional `history`, or `positions` containing those fields. Both use the same search profile; batches return `items` in input order. `analyze_game` includes classifications by default; set `should_review=false` for analysis only. Use current connected tool names rather than removed interfaces.
 
-Choose one evidenced bottleneck. Elicit the learner's line and judgment, verify concrete claims, explain the first meaningful divergence, and request repair. Follow with an unfamiliar related position and counterexample; retest independently later.
+## 4. Live Board and Hints
 
-Use model-game prediction for planning, opening deviations for understanding, fixed-board calculation for visualization, and checkpoint retries for technique. Contrast alternatives with concrete evidence.
+Use `analyze_live_game` with the known game identifier and revision for combined board evidence and matching annotations. Use `get_live_game` for state questions. Reuse `known_analysis_id` only when its evidence is already in context. After a revision conflict, read current state and reconsider the request. Do not poll the board.
 
-Use imported `mayazrakib` games for personal review. Authorized data synchronization uses `manage_chess_data` and is not a turn prerequisite. Record supported outcomes, then leave one correction and next task.
+Hint responses must keep solution moves out of all returned facts, references, and annotations. Reveal puzzle solutions only when requested. Draw claims require an explicit user choice. Annotation changes do not move pieces. The UI and MCP share a game only within the same server process; restart clears all game and evidence state.
 
-For requested exports or interrupted sessions, retain legal moves, history, branch, objective, evidence references, assistance, and next action. If export is unavailable, provide legal PGN or a compact handoff. Remote clients may not open server-local file URIs.
+Gambit has no learner tracking, personal database, scheduled review, or conversational memory. Do not imply successful saving of personal information. Do not fetch account history without an explicit account and relevant bounded request.

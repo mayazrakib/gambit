@@ -120,6 +120,8 @@ class PrincipalVariation:
     depth: int | None = None
     actual_nodes: int | None = None
     engine_time_ms: int | None = None
+    score_bound: str = "exact"
+    mate_unit: str = "moves"
 
 @dataclass(frozen=True,)
 class PositionAnalysisRequest:
@@ -136,6 +138,8 @@ class PositionAnalysis:
         PrincipalVariation,
         ...,
     ]
+
+    score_perspective: str = "white"
 
 @dataclass(frozen=True,)
 class MoveAnalysis(ParsedMove,):
@@ -405,6 +409,9 @@ def parse_game(pgn: str,) -> ParsedGame:
         if ply > MAX_GAME_PLIES:
             raise ValueError(f"Game exceeds {MAX_GAME_PLIES} plies.",)
 
+        if board.is_game_over() or node.move not in board.legal_moves:
+            raise ValueError("PGN continues beyond an automatic terminal state or contains an illegal move.",)
+
         fen_before = board.fen()
         san = board.san(node.move,)
         side: Side = "white" if board.turn else "black"
@@ -519,6 +526,13 @@ def analyze_board(
             line.get("depth",),
             line.get("actual_nodes",),
             line.get("engine_time_ms",),
+            score_bound=("upper" if line.get("score_bound",) == "lower" else "lower") if not board.turn and line.get(
+                "score_bound",
+                "exact",
+            ) != "exact" else line.get(
+                "score_bound",
+                "exact",
+            ),
         ),)
 
     if not variations:

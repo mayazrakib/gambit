@@ -253,12 +253,6 @@ class StockfishClient:
         self.send(f"setoption name Hash value {self.configuration.hash_mb_per_worker}",)
         self.send("setoption name UCI_ShowWDL value true",)
 
-        if self.configuration.syzygy_path:
-            from pathlib import Path
-
-            directories = os.pathsep.join((str(Path(path,).expanduser().resolve(),) for path in self.configuration.syzygy_path.split(os.pathsep,) if path),)
-            self.send(f"setoption name SyzygyPath value {directories}",)
-
         executable = shutil.which(engine_path,)
 
         if executable:
@@ -391,6 +385,9 @@ class StockfishClient:
                     board,
                     cancellation,
                 )
+
+                if root_moves and any((line["pv"][0].uci() not in root_moves for line in analysis),):
+                    raise RuntimeError("Stockfish returned a move outside the requested candidates.",)
             except (InterruptedError, TimeoutError):
                 raise
             except (OSError, ValueError, RuntimeError) as exception:
@@ -410,9 +407,18 @@ class StockfishClient:
         cancellation: threading.Event | None = None,
     ) -> list[EngineLine]:
         cancellation = get_request_cancellation(cancellation,)
+        self.last_metrics = {}
+
+        if board.is_game_over():
+            raise ValueError("A terminal position cannot have a new engine variation.",)
 
         lines_by_rank: dict[
             int,
+            EngineLine,
+        ] = {}
+
+        lines_by_move: dict[
+            chess.Move,
             EngineLine,
         ] = {}
 
@@ -446,7 +452,46 @@ class StockfishClient:
                 if best_move not in board.legal_moves:
                     raise RuntimeError("Stockfish returned an invalid best move.",)
 
-                return [lines_by_rank[rank] for rank in sorted(lines_by_rank,)]
+                principal = lines_by_rank.get(1,)
+
+                if principal is None or not principal["pv"] or principal["pv"][0] != best_move:
+                    principal = lines_by_move.get(best_move,)
+
+                if principal is None:
+                    raise RuntimeError("Stockfish's best move does not match its scored principal variation.",)
+
+                lines = [principal,]
+                roots = {best_move,}
+
+                for rank in range(
+                    2,
+                    len(lines_by_rank,) + 1,
+                ):
+                    variation = lines_by_rank.get(rank,)
+
+                    if variation is None or variation.get("depth",) != principal.get("depth",) or variation["pv"][0] in roots:
+                        break
+
+                    roots.add(variation["pv"][0],)
+                    lines.append(variation,)
+
+                for information in lines:
+                    replay = board.copy()
+                    moves = []
+
+                    for move in information["pv"]:
+                        if replay.is_game_over():
+                            break
+
+                        if move not in replay.legal_moves:
+                            raise RuntimeError("Stockfish returned an illegal principal variation.",)
+
+                        moves.append(move,)
+                        replay.push(move,)
+
+                    information["pv"] = moves
+
+                return lines
 
             if not line.startswith("info ",) or " pv " not in line:
                 continue
@@ -469,7 +514,12 @@ class StockfishClient:
 
             if parsed_line is not None:
                 rank, information = parsed_line
+
+                if rank < 1 or not information["pv"]:
+                    raise RuntimeError("Stockfish returned an empty or invalid ranked variation.",)
+
                 lines_by_rank[rank] = information
+                lines_by_move[information["pv"][0]] = information
 
 def validate_nodes(nodes: int,) -> int:
     if isinstance(
@@ -572,8 +622,8 @@ def get_variation(
     ]] = []
 
     for move in moves:
-        if move not in variation_board.legal_moves:
-            break
+        if variation_board.is_game_over() or move not in variation_board.legal_moves:
+            raise RuntimeError("The variation is illegal or continues beyond an automatic terminal state.",)
 
         variation.append({"san": variation_board.san(move,), "uci": move.uci(),},)
         variation_board.push(move,)

@@ -2,239 +2,186 @@ import csv
 import hashlib
 import io
 import json
-from contextlib import nullcontext
+import os
+import threading
+from collections import defaultdict
+from copy import deepcopy
+from importlib.resources import files
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import chess
-import chess.pgn
-import chess.syzygy
 
 from gambit.engine.client import parse_board
-from gambit.game.service import ValidatedGameBuilder, validate_pgn_tokens
-from gambit.infrastructure.storage import Store
 
-MAX_IMPORT_BYTES = 8 * 1024 * 1024
+OPENING_REVISION = '5a13018164f6bd88f48b3dc31a8e2a39f31a060a'
+OPENING_SOURCE = f'https://github.com/lichess-org/chess-openings/tree/{OPENING_REVISION}'
 
 def get_position_key(board: chess.Board,) -> str:
-    return " ".join(board.fen().split()[:4],)
-
-def parse_study(pgn: str,) -> chess.pgn.Game:
-    if not pgn.strip() or len(pgn.encode(),) > MAX_IMPORT_BYTES:
-        raise ValueError("A study must contain between 1 byte and 8 MiB of PGN.",)
-
-    validate_pgn_tokens(pgn,)
-    stream = io.StringIO(pgn,)
-
-    game = chess.pgn.read_game(
-        stream,
-        Visitor=ValidatedGameBuilder,
-    )
-
-    if game is None or chess.pgn.read_game(stream,) is not None:
-        raise ValueError("Import exactly one PGN study at a time, including its variations.",)
-
-    return game
+    return ' '.join(board.fen(en_passant='legal',).split()[:4],)
 
 class Knowledge:
     def __init__(
         self,
-        store: Store,
+        directory: str,
     ) -> None:
-        self.store = store
+        self.directory = Path(directory,).expanduser()
+        self.lock = threading.Lock()
+        self.records = None
+        self.positions = None
+        self.revision = OPENING_REVISION
 
-    def import_study(
-        self,
-        pgn: str,
-        name: str,
-        source: str,
-        is_repertoire: bool = False,
-    ) -> dict:
-        if not name.strip() or not source.strip():
-            raise ValueError("A study name and source attribution are required.",)
+    def load(self,) -> None:
+        with self.lock:
+            if self.records is not None:
+                return
 
-        game = parse_study(pgn,)
-        study_id = hashlib.sha256((source + "\n" + name + "\n" + pgn).encode(),).hexdigest()
-        collection = "repertoire" if is_repertoire else "opening"
+            path = self.directory / 'openings.json'
+
+            if path.is_file():
+                if path.stat().st_size > 16 * 1024 * 1024:
+                    raise ValueError('The opening snapshot is too large.',)
+
+                snapshot = json.loads(path.read_text(),)
+                revision = snapshot['revision']
+
+                if len(revision,) != 40 or any((character not in '0123456789abcdef' for character in revision),):
+                    raise ValueError('An opening revision must be a Git commit SHA.',)
+
+                rows = snapshot['rows']
+            else:
+                revision = OPENING_REVISION
+                rows = []
+
+                for letter in 'abcde':
+                    content = files('gambit',).joinpath(
+                        'data',
+                        f'{letter}.tsv',
+                    ).read_text()
+
+                    rows.extend(csv.DictReader(
+                        io.StringIO(content,),
+                        delimiter='\t',
+                    ),)
+
+            records, positions = self.validate_rows(rows,)
+            self.revision = revision
+            self.records = records
+            self.positions = positions
+
+    @staticmethod
+    def validate_rows(rows: list[dict],) -> tuple[
+        list,
+        dict,
+    ]:
+        if not rows or len(rows,) > 20000:
+            raise ValueError('An opening snapshot requires between 1 and 20000 lines.',)
+
         records = []
-        stack = [(game, game.board(), 0),]
+        positions = defaultdict(list,)
 
-        while stack:
-            node, board, ply = stack.pop()
+        for row in rows:
+            if not row.get('name',) or not row.get('eco',) or not row.get('pgn',):
+                raise ValueError('Opening lines require name, ECO, and PGN.',)
 
-            if len(records,) >= 10000 or ply > 256:
-                raise ValueError("A study exceeds 10000 branches or 256 plies.",)
+            board = chess.Board()
+            edges = []
 
-            for child in node.variations:
-                key = get_position_key(board,)
-                move = child.move
-                record_id = hashlib.sha256((study_id + key + move.uci()).encode(),).hexdigest()
+            for token in row['pgn'].split():
+                if token.endswith('.',):
+                    continue
 
-                records.append({
-                    "id": record_id,
-                    "study_id": study_id,
-                    "name": name,
-                    "eco": game.headers.get("ECO",),
-                    "position_key": key,
-                    "fen": board.fen(),
-                    "move_uci": move.uci(),
-                    "move_san": board.san(move,),
-                    "comment": child.comment,
-                    "source": source,
-                    "provenance": collection,
-                    "ply": ply,
-                },)
+                if len(edges,) >= 256:
+                    raise ValueError('An opening line exceeds 256 plies.',)
 
-                next_board = board.copy()
-                next_board.push(move,)
-                stack.append((child, next_board, ply + 1),)
+                move = board.parse_san(token,)
+                edges.append((get_position_key(board,), move.uci(), board.san(move,)),)
+                board.push(move,)
 
-        self.store.put_many(
-            collection,
-            records,
-        )
+            record = {'eco': row['eco'], 'name': row['name'], 'pgn': row['pgn'], 'position_key': get_position_key(board,),}
+            records.append(record,)
+            positions[get_position_key(board,)].append({'opening': record,},)
 
-        final_board = game.end().board()
+            for key, uci, san in edges:
+                positions[key].append({'move_uci': uci, 'move_san': san, 'eco': row['eco'], 'name': row['name'],},)
 
-        self.store.put(
-            "study",
-            study_id,
-            {"id": study_id, "name": name, "eco": game.headers.get("ECO",), "position_key": get_position_key(final_board,), "fen": final_board.fen(), "source": source, "provenance": collection, "pgn": pgn,},
-        )
-
-        return {"study_id": study_id, "imported_edges": len(records,), "source": source,}
+        return records, dict(positions,)
 
     def find_moves(
         self,
         fen: str,
-        is_repertoire: bool = False,
         offset: int = 0,
-        limit: int = 100,
+        limit: int = 12,
     ) -> dict:
-        board = parse_board(fen,)
-        collection = "repertoire" if is_repertoire else "opening"
+        if not 0 <= offset <= 1000000 or not 1 <= limit <= 100:
+            raise ValueError('Opening pagination is outside supported bounds.',)
 
-        records = self.store.list_records(
-            collection,
-            limit,
-            offset,
+        board = parse_board(fen,)
+        self.load()
+
+        matches = self.positions.get(
             get_position_key(board,),
+            [],
         )
 
-        return {
-            "fen": board.fen(),
-            "moves": records,
-            "reached_openings": self.store.list_records(
-                "study",
-                limit,
-                offset,
-                get_position_key(board,),
-            ),
-            "next_offset": offset + limit if len(records,) == limit else None,
-        }
-
-    def import_opening_tsv(
-        self,
-        tsv: str,
-        source: str,
-    ) -> dict:
-        if len(tsv.encode(),) > MAX_IMPORT_BYTES or not source.strip():
-            raise ValueError("Opening imports require a source and at most 8 MiB of TSV.",)
-
-        rows = list(csv.DictReader(
-            io.StringIO(tsv,),
-            delimiter="\t",
-        ),)
-
-        if not rows or not {"eco", "name", "pgn",}.issubset(rows[0],):
-            raise ValueError("Opening TSV must include eco, name, and pgn columns.",)
-
-        for row in rows:
-            parse_study(row["pgn"],)
-
-        imported = 0
-
-        for row in rows:
-            report = self.import_study(
-                f'[ECO "{row["eco"]}"]\n\n{row["pgn"]}',
-                row["name"],
-                source,
-            )
-
-            imported += report["imported_edges"]
-
-        return {"imported_lines": len(rows,), "imported_edges": imported, "source": source,}
+        return {'status': 'available' if matches else 'empty', 'fen': board.fen(), 'records': deepcopy(matches[offset:offset + limit],), 'next_offset': offset + limit if len(matches,) > offset + limit else None, 'source': f'https://github.com/lichess-org/chess-openings/tree/{self.revision}', 'revision': self.revision, 'evidence_kind': 'opening_classification', 'limitation_codes': ['classification_not_complete_theory', 'corpus_move_not_quality_assessment',],}
 
     def search_openings(
         self,
         query: str,
         offset: int = 0,
-    ) -> list[dict]:
-        if len(query,) > 200 or offset < 0:
-            raise ValueError("Opening search parameters are outside supported limits.",)
+        limit: int = 12,
+    ) -> dict:
+        if len(query,) > 200 or not 0 <= offset <= 1000000 or not 1 <= limit <= 100:
+            raise ValueError('Opening search is outside supported bounds.',)
 
-        with self.store.lock:
-            rows = self.store.connection.execute(
-                """
-                    SELECT payload FROM record
-                    WHERE collection = 'opening'
-                        AND instr(lower(json_extract(payload, '$.name')), lower(?)) > 0
+        self.load()
+        matches = [record for record in self.records if query.casefold() in record['name'].casefold()]
 
-                    ORDER BY id
-                    LIMIT 100 OFFSET ?
-                """,
-                (query, offset),
-            ).fetchall()
+        return {'status': 'available' if matches else 'empty', 'items': deepcopy(matches[offset:offset + limit],), 'next_offset': offset + limit if len(matches,) > offset + limit else None, 'revision': self.revision, 'source': f'https://github.com/lichess-org/chess-openings/tree/{self.revision}',}
 
-        return [json.loads(row[0],) for row in rows]
+    def publish(
+        self,
+        revision: str,
+        rows: list[dict],
+    ) -> dict:
+        if len(revision,) != 40 or any((character not in '0123456789abcdef' for character in revision),):
+            raise ValueError('Supply a full lowercase opening commit SHA.',)
 
-def probe_tablebase(
-    fen: str,
-    directory: str,
-    tables: chess.syzygy.Tablebase | None = None,
-) -> dict:
-    board = parse_board(fen,)
+        records, positions = self.validate_rows(rows,)
 
-    if not directory:
-        return {"status": "unavailable", "reason": "No Syzygy directory is configured.",}
+        payload = json.dumps(
+            {'revision': revision, 'rows': rows,},
+            separators=(',', ':'),
+        ).encode()
 
-    if board.castling_rights or len(board.piece_map(),) > 7:
-        return {
-            "status": "unsupported",
-            "reason": "Syzygy requires at most seven pieces and no castling rights.",
-        }
+        self.directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-    try:
-        with (nullcontext(tables,) if tables is not None else chess.syzygy.open_tablebase(str(Path(directory,).expanduser(),),)) as tablebase:
-            wdl = tablebase.probe_wdl(board,)
-            dtz = tablebase.probe_dtz(board,)
-            moves = []
+        temporary = None
 
-            for move in board.legal_moves:
-                san = board.san(move,)
-                board.push(move,)
+        try:
+            with NamedTemporaryFile(
+                dir=self.directory,
+                prefix='.openings-',
+                delete=False,
+            ) as stream:
+                temporary = Path(stream.name,)
+                stream.write(payload,)
+                stream.flush()
+                os.fsync(stream.fileno(),)
 
-                if board.is_checkmate():
-                    child_wdl = -2
-                elif board.is_stalemate() or board.is_insufficient_material():
-                    child_wdl = 0
-                else:
-                    child_wdl = tablebase.probe_wdl(board,)
+            with self.lock:
+                os.replace(
+                    temporary,
+                    self.directory / 'openings.json',
+                )
 
-                board.pop()
-                moves.append({"uci": move.uci(), "san": san, "wdl": -child_wdl,},)
+                self.revision, self.records, self.positions = revision, records, positions
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True,)
 
-        return {
-            "status": "available",
-            "wdl": wdl,
-            "dtz": dtz,
-            "score_perspective": "side to move",
-            "halfmove_clock": board.halfmove_clock,
-            "moves": sorted(
-                moves,
-                key=lambda move: -move["wdl"],
-            ),
-            "provenance": "local syzygy",
-            "caveat": "WDL and DTZ are raw Syzygy values. Apply the current halfmove clock and draw-claim rules before declaring a forced result.",
-        }
-    except (KeyError, OSError) as exception:
-        return {"status": "unavailable", "reason": str(exception,),}
+        return {'status': 'available', 'revision': revision, 'lines': len(records,), 'sha256': hashlib.sha256(payload,).hexdigest(),}

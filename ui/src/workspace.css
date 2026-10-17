@@ -1,0 +1,59 @@
+.workspace_grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 336px); align-items: start; gap: 48px; }
+.board_panel, .sidebar { min-width: 0; }
+.board_panel { width: min(100%, 680px); justify-self: center; }
+.player_row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 40px; font-size: 13.2px; }
+.player_row h2 { font-size: 14.3px; }
+#opponent_summary, #player_color, #position_status { color: var(--muted); }
+.turn_badge { margin-left: auto; font-size: 12.1px; color: var(--muted); white-space: nowrap; }
+.is_thinking { color: var(--thinking); }
+.board_surface { position: relative; }
+chess-board { display: block; width: 100%; }
+.board_empty { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; background: color-mix(in srgb, var(--background) 95%, transparent); font-size: 14.3px; }
+.board_toolbar, .button_row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.board_toolbar { justify-content: space-between; margin: 8px 0; }
+.position_data { border-top: 1px solid var(--border); padding-top: 8px; font-size: 12.1px; color: var(--muted); }
+.position_data code { display: block; margin-top: 4px; overflow-wrap: anywhere; line-height: 1.65; }
+.sidebar { display: grid; align-content: start; gap: 16px; }
+.card { border: 0; border-top: 1px solid var(--border); padding-top: 10px; }
+.control_heading { border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.control_heading h2 { font-size: 21.5px; line-height: 1.2; }
+.card_heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.profile_label { display: flex; align-items: center; flex-shrink: 0; gap: 6px; font-size: 13.2px; color: var(--muted); }
+.profile_label select {
+    appearance: none;
+    min-height: 36px;
+    font-size: 13.2px;
+    padding: 8px 32px 8px 10px;
+    border: 1px solid var(--input);
+    border-radius: 4px;
+    background: var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
+}
+.tutor_actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.switch_label { display: flex; align-items: center; gap: 7px; font-size: 13.2px; color: var(--primary); cursor: pointer; }
+.switch_label input { margin: 0; accent-color: var(--primary); width: 16px; height: 16px; }
+.tutor_message { margin-top: 12px; padding: 10px; background: var(--surface); border: 1px solid var(--accent); font-size: 14.3px; }
+.message_label { color: var(--muted); font-size: 12.1px; }
+.tutor_message p { white-space: pre-wrap; overflow-wrap: anywhere; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.1px; line-height: 1.65; margin-top: 5px; }
+.teaching_metrics { display: block; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.1px; color: var(--muted); margin-top: 8px; }
+.count_badge { font-size: 12.1px; color: var(--muted); }
+.moves_header, .move_row { display: grid; grid-template-columns: 36px 1fr 1fr; align-items: center; padding: 3px 8px; font-size: 13.2px; }
+.moves_header { color: var(--muted); background: var(--secondary); border-bottom: 1px solid var(--border); }
+.move_list { max-height: 220px; min-height: 44px; overflow-y: auto; scrollbar-width: thin; }
+.move_row { min-height: 34px; font-variant-numeric: tabular-nums; }
+.move_row:nth-child(even) { background: var(--surface); }
+.move_row > span:first-child { color: var(--muted); }
+.move_row > span:not(:first-child) { justify-self: start; padding: 2px 5px; margin-left: -5px; }
+.latest_move { background: var(--accent); font-weight: 600; }
+.empty_history { padding: 10px 8px; color: var(--muted); font-size: 13.2px; }
+.connection_panel { padding-top: 10px; border-top: 1px solid var(--border); font-size: 13.2px; color: var(--muted); }
+.connection_panel summary { color: var(--primary); font-weight: 500; }
+.connection_panel p { margin-top: 8px; line-height: 1.65; }
+.connection_panel code { display: block; margin-top: 8px; font-size: 12.1px; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+    .workspace_grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+    .board_panel { max-width: 680px; justify-self: stretch; }
+    .sidebar { grid-template-columns: minmax(0, 1fr); }
+    .button { min-height: 36px; }
+    .player_row { gap: 6px; }
+}

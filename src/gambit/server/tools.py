@@ -1,30 +1,44 @@
-import asyncio
 import atexit
 import threading
-from dataclasses import asdict
+from typing import Literal
 
-from gambit.api.contracts import PositionEvidence
+from pydantic import BaseModel, ConfigDict
+
 from gambit.engine.analysis import AnalysisService, EnginePool, compact_position_evidence
 from gambit.engine.client import execute_engine_request
-from gambit.game.features import inspect_features
+from gambit.game.evidence import Evidence
+from gambit.game.position import build_board
+from gambit.game.service import MAX_BATCH_POSITIONS
 from gambit.infrastructure.configuration import load_configuration
-from gambit.infrastructure.corpus import load_bundled_openings
 from gambit.infrastructure.storage import Store
 from gambit.knowledge.base import Knowledge
-from gambit.learning.openings import OpeningPlans
-from gambit.learning.practice import Practice
-from gambit.learning.progressive import ProgressiveAnalysis
-from gambit.learning.service import Learning
-from gambit.learning.sessions import TutorSessions
-from gambit.learning.speech import Speech, create_speech_plan
-from gambit.learning.training import (
-    LESSONS,
-    Training,
-    get_repertoire_progress_id,
-    validate_training_id,
-)
-from gambit.learning.tutoring import Tutor
-from gambit.server.dataset_tools import DatasetJobs, register_dataset_tools
+from gambit.live.service import LiveWorkspace
+from gambit.providers.http import ProviderHttp
+from gambit.providers.service import ExplorerOptions, Providers
+
+Profile = Literal[
+    'instant',
+    'quick',
+    'deep',
+]
+
+Section = Literal[
+    'facts',
+    'analysis',
+    'openings',
+    'statistics',
+    'cloud',
+    'tablebase',
+]
+
+class PositionRequest(BaseModel,):
+    model_config = ConfigDict(
+        extra='forbid',
+        strict=True,
+    )
+
+    fen: str
+    history: list[str] | None = None
 
 class Runtime:
     def __init__(
@@ -32,11 +46,7 @@ class Runtime:
         engine: EnginePool | None = None,
     ) -> None:
         self.configuration = load_configuration()
-
-        self.store = Store(
-            self.configuration.database_path,
-            self.configuration.runtime_directory,
-        )
+        self.store = Store(self.configuration.cache_capacity,)
 
         self.analysis = AnalysisService(
             self.configuration,
@@ -44,72 +54,27 @@ class Runtime:
             engine,
         )
 
-        self.knowledge = Knowledge(self.store,)
+        self.knowledge = Knowledge(self.configuration.runtime_directory,)
+        self.http = ProviderHttp(self.configuration,)
+        self.providers = Providers(self.http,)
 
-        self.training = Training(
-            self.store,
-            self.analysis,
-        )
-
-        self.learning = Learning(
-            self.analysis,
-            self.store,
-        )
-
-        self.opening_plans = OpeningPlans(self.store,)
-        self.progressive = ProgressiveAnalysis(self.analysis,)
-
-        self.sessions = TutorSessions(
-            self.analysis,
-            self.store,
-        )
-
-        self.sessions.progressive = self.progressive
-
-        self.practice = Practice(
-            self.analysis,
-            self.store,
-            self.sessions,
-        )
-
-        self.dataset_service = None
-        self.dataset_lock = threading.RLock()
-        self.data_jobs = DatasetJobs(self,)
-
-        self.speech = Speech(
-            self.configuration.speech_executable,
-            self.configuration.speech_directory,
-        )
-
-        self.tutor = Tutor(
+        self.evidence = Evidence(
             self.analysis,
             self.knowledge,
-            self.store,
-            sessions=self.sessions,
-            progressive=self.progressive,
+            self.providers,
         )
 
-    def get_datasets(self,):
-        with self.dataset_lock:
-            if self.dataset_service is None:
-                from gambit.infrastructure.data_service import DatasetService
-
-                self.dataset_service = DatasetService(self.configuration.runtime_directory,)
-                self.practice.corpus = self.dataset_service.corpus
-
-            return self.dataset_service
-
-    def get_corpus(self,):
-        return self.get_datasets().corpus
+        self.live = LiveWorkspace(self,)
+        self.is_closed = False
 
     def close(self,) -> None:
-        self.data_jobs.close()
-        self.progressive.close()
+        if self.is_closed:
+            return
+
+        self.is_closed = True
+        self.live.close()
         self.analysis.close()
-
-        if self.dataset_service is not None:
-            self.dataset_service.close()
-
+        self.http.close()
         self.store.close()
 
 class RuntimeOwner:
@@ -134,80 +99,109 @@ def register_tools(
     engine: EnginePool | None = None,
 ) -> RuntimeOwner:
     owner = RuntimeOwner(engine,)
-    from gambit.server.extended_tools import register_extended_tools
+    from gambit.server.fact_tools import register_fact_tools
+    from gambit.server.live_http import register_live_http
+    from gambit.server.live_tools import register_live_tools
+    from gambit.server.provider_tools import register_provider_tools
 
-    register_extended_tools(
+    register_fact_tools(
         server,
         owner,
     )
 
-    from gambit.server.tutoring_tools import register_tutoring_tools
-
-    register_tutoring_tools(
+    register_live_http(
         server,
         owner,
     )
 
-    register_dataset_tools(
+    register_live_tools(
         server,
         owner,
     )
 
-    @server.tool(description="Load the bundled, version-pinned Lichess named opening corpus into local storage.",)
-    async def initialize_openings() -> dict[
-        str,
-        object,
-    ]:
-        return await execute_engine_request(
-            load_bundled_openings,
-            owner.get_runtime().store,
-        )
+    register_provider_tools(
+        server,
+        owner,
+    )
 
-    @server.tool(description="Report engine settings and exact local corpus counts without launching an engine.",)
-    def get_capabilities() -> dict[
-        str,
-        object,
-    ]:
-        runtime = owner.get_runtime()
+    @server.tool(description='Get contract, retention, and provider capabilities without engine startup or network requests.',)
+    def get_capabilities() -> dict:
+        return {'contract_version': 3, 'persistent_data': ['opening_classifications',], 'temporary_state': ['active_game', 'engine_evidence', 'api_cache', 'analysis_jobs',], 'providers': ['lichess', 'explorer', 'tablebase', 'chesscom',], 'explanation_provider': 'client', 'limitations': ['finite_search_not_proof', 'client_explanation_unverified', 'provider_coverage_not_exhaustive',], 'game_sharing': 'same_process_only',}
 
-        return {
-            "configuration": asdict(runtime.configuration,),
-            "counts": {
-                name: runtime.store.count_records(name,)
-                for name in ("opening", "repertoire", "puzzle", "analysis")
-            },
-            "lesson_topics": list(LESSONS,),
-            "speech": "Local espeak-ng or client-managed TTS.",
-            "model": "The MCP host supplies the language model.",
-        }
-
-    @server.tool(description="Return instant preliminary position evidence by default. Scores are White-relative. Use quick or deep only when needed; get_analysis retrieves full evidence.",)
-    async def evaluate_position(
+    @server.tool(description='Get selected evidence sections in one call. Defaults to local facts and instant preliminary analysis. External sources are opt-in. Scores are White-relative.',)
+    async def get_evidence(
         fen: str,
-        profile: str = "instant",
-        moves: list[str] | None = None,
+        history: list[str] | None = None,
+        sections: list[Section] | None = None,
+        profile: Profile = 'instant',
         is_compact: bool = True,
-    ) -> PositionEvidence:
-        evidence = await execute_engine_request(
-            owner.get_runtime().analysis.evaluate,
+        known_analysis_id: str | None = None,
+        explorer: ExplorerOptions | None = None,
+    ) -> dict:
+        return await execute_engine_request(
+            owner.get_runtime().evidence.collect,
             fen,
+            history,
+            sections,
             profile,
-            moves,
+            is_compact,
+            known_analysis_id,
+            explorer,
         )
 
-        return compact_position_evidence(evidence,) if is_compact else evidence
-
-    @server.tool(description="Compare a legal move against engine analysis before and after it. Scores are White-relative.",)
-    async def evaluate_move(
-        fen: str,
-        move: str,
-        profile: str = "instant",
+    @server.tool(description='Analyze one position or a batch of up to 128 positions with Stockfish. Supply fen with optional history, or positions containing fen and optional history. Batches return items in request order. Instant and quick are preliminary; deep is finite search, not proof. Scores are White-relative.',)
+    async def analyze_position(
+        fen: str | None = None,
+        profile: Profile = 'instant',
         history: list[str] | None = None,
         is_compact: bool = True,
-    ) -> dict[
-        str,
-        object,
-    ]:
+        positions: list[PositionRequest] | None = None,
+    ) -> dict:
+        if (fen is None) == (positions is None):
+            raise ValueError('Supply exactly one of fen or positions.',)
+
+        if positions is not None and history is not None:
+            raise ValueError('Batch history belongs to each position.',)
+
+        requests = positions if positions is not None else [
+            PositionRequest(
+                fen=fen,
+                history=history,
+            ),
+        ]
+
+        if not 1 <= len(requests,) <= MAX_BATCH_POSITIONS:
+            raise ValueError(f'Supply between one and {MAX_BATCH_POSITIONS} positions.',)
+
+        for request in requests:
+            build_board(
+                request.fen,
+                request.history,
+            )
+
+        analysis = owner.get_runtime().analysis
+        results = []
+
+        for request in requests:
+            result = await execute_engine_request(
+                analysis.evaluate,
+                request.fen,
+                profile,
+                request.history,
+            )
+
+            results.append(compact_position_evidence(result,) if is_compact else result,)
+
+        return {'items': results,} if positions is not None else results[0]
+
+    @server.tool(description='Analyze a legal move against the best alternatives and replies. Preserves history, preliminary status, and score bounds. Scores are White-relative.',)
+    async def analyze_move(
+        fen: str,
+        move: str,
+        profile: Profile = 'instant',
+        history: list[str] | None = None,
+        is_compact: bool = True,
+    ) -> dict:
         result = await execute_engine_request(
             owner.get_runtime().analysis.evaluate_move,
             fen,
@@ -217,537 +211,92 @@ def register_tools(
         )
 
         if is_compact:
-            result["before"] = compact_position_evidence(result["before"],)
-            result["after"] = compact_position_evidence(result["after"],)
+            result['before'] = compact_position_evidence(result['before'],)
+            result['after'] = compact_position_evidence(result['after'],)
 
         return result
 
-    @server.tool(description="Analyze and compare up to eight candidate moves under the same search profile.",)
-    async def compare_candidate_moves(
+    @server.tool(description='Compare up to eight legal moves from the same position. Returns evaluations and best replies under the same search budget. Scores are White-relative.',)
+    async def compare_moves(
         fen: str,
         moves: list[str],
-        profile: str = "instant",
+        profile: Profile = 'instant',
         history: list[str] | None = None,
-        is_compact: bool = True,
-    ) -> dict[
-        str,
-        object,
-    ]:
+    ) -> dict:
         if not 1 <= len(moves,) <= 8:
-            raise ValueError("Compare between one and eight candidate moves.",)
+            raise ValueError('Compare between one and eight candidates.',)
 
-        comparisons = await asyncio.gather(*(
-            evaluate_move(
+        return {
+            'comparisons': [await analyze_move(
                 fen,
                 move,
                 profile,
                 history,
-                is_compact,
-            )
-            for move in moves
-        ),)
+            ) for move in moves],
+        }
 
-        return {"comparisons": comparisons,}
+    @server.tool(description='Retrieve temporary full evidence. References expire on eviction or restart.',)
+    def get_analysis(analysis_id: str,) -> dict:
+        return owner.get_runtime().store.get(
+            'analysis',
+            analysis_id,
+        ) or {'status': 'expired', 'reason_code': 'evidence_reference_expired', 'id': analysis_id,}
 
-    @server.tool(description="Start a bounded, persistent background game analysis or review job.",)
-    def start_analysis_job(
+    @server.tool(description='Start a bounded in-memory whole-game analysis job. No game or checkpoint survives restart.',)
+    def start_game_analysis(
         pgn: str,
         should_review: bool = True,
-    ) -> dict[
-        str,
-        object,
-    ]:
+    ) -> dict:
         return owner.get_runtime().analysis.start_job(
             pgn,
             should_review,
         )
 
-    @server.tool(description="Read analysis job status and completed-search progress.",)
-    def get_analysis_job(job_id: str,) -> dict[
-        str,
-        object,
-    ]:
-        job = owner.get_runtime().store.get(
-            "job",
+    @server.tool(description='Read temporary job progress. Missing references are expired.',)
+    def get_analysis_job(job_id: str,) -> dict:
+        return owner.get_runtime().store.get(
+            'job',
             job_id,
-        )
+        ) or {'status': 'expired', 'reason_code': 'job_reference_expired',}
 
-        if job is None:
-            raise ValueError("The analysis job does not exist.",)
-
-        return job
-
-    @server.tool(description="Cancel a job at its next search boundary. An active search has a bounded deadline.",)
-    def cancel_analysis_job(job_id: str,) -> dict[
-        str,
-        object,
-    ]:
+    @server.tool(description='Cancel a temporary analysis job at its next bounded search boundary.',)
+    def cancel_analysis_job(job_id: str,) -> dict:
         return owner.get_runtime().analysis.cancel_job(job_id,)
 
-    @server.tool(description="Retrieve an immutable position analysis or completed game report.",)
-    def get_analysis(analysis_id: str,) -> dict[
-        str,
-        object,
-    ]:
-        analysis = owner.get_runtime().store.get(
-            "analysis",
-            analysis_id,
-        )
+    @server.tool(description='Read bounded process-local search and cache latency metrics.',)
+    def get_metrics() -> dict:
+        return owner.get_runtime().analysis.engine.get_metrics()
 
-        if analysis is None:
-            raise ValueError("The analysis record does not exist.",)
-
-        return analysis
-
-    @server.tool(description="Import a source-attributed PGN study, including variations and transpositions.",)
-    async def import_study(
-        pgn: str,
-        name: str,
-        source: str,
-        is_repertoire: bool = False,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return await execute_engine_request(
-            owner.get_runtime().knowledge.import_study,
-            pgn,
-            name,
-            source,
-            is_repertoire,
-        )
-
-    @server.tool(description="Import a bounded Lichess-format opening TSV batch with explicit source attribution.",)
-    async def import_opening_tsv(
-        tsv: str,
-        source: str,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return await execute_engine_request(
-            owner.get_runtime().knowledge.import_opening_tsv,
-            tsv,
-            source,
-        )
-
-    @server.tool(description="Search locally imported opening names with pagination.",)
-    def find_opening(
+    @server.tool(description='Find opening names and ECO codes in the pinned local classification corpus. This is not complete opening theory.',)
+    def find_openings(
         query: str,
         offset: int = 0,
-    ) -> list[dict[
-        str,
-        object,
-    ]]:
+        limit: int = 12,
+    ) -> dict:
         return owner.get_runtime().knowledge.search_openings(
             query,
             offset,
+            limit,
         )
 
-    @server.tool(description="Get source-attributed corpus moves at a position, including transpositions.",)
-    def get_opening_position(
+    @server.tool(description='Get transposition-matched classifications and corpus continuations. Corpus membership does not establish move quality.',)
+    def get_opening(
         fen: str,
         offset: int = 0,
-    ) -> dict[
-        str,
-        object,
-    ]:
+        limit: int = 12,
+    ) -> dict:
         return owner.get_runtime().knowledge.find_moves(
             fen,
-            False,
             offset,
+            limit,
         )
 
-    @server.tool(description="Get personal repertoire moves at a position.",)
-    def get_repertoire_move(
-        fen: str,
-        offset: int = 0,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return owner.get_runtime().knowledge.find_moves(
-            fen,
-            True,
-            offset,
-        )
+    @server.resource('gambit://contracts/v3',)
+    def get_contract() -> dict:
+        return {'schema_version': 3, 'evidence_kinds': ['rules_verified', 'engine_analysis', 'opening_classification', 'observed_game_statistics', 'tablebase', 'attributed_source',], 'score_perspective': 'white_for_engine_scores', 'retention': 'openings_only_on_disk', 'limitations': ['finite_search_not_proof', 'client_explanation_unverified',],}
 
-    @server.tool(description="Create a repertoire recall drill without exposing its expected moves.",)
-    def create_repertoire_drill(
-        learner_id: str,
-        fen: str,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        from uuid import uuid4
-        validate_training_id(learner_id,)
-        runtime = owner.get_runtime()
-
-        repertoire = runtime.knowledge.find_moves(
-            fen,
-            True,
-        )
-
-        if not repertoire["moves"]:
-            raise ValueError("No repertoire moves are recorded at this position.",)
-
-        drill = {
-            "id": str(uuid4(),),
-            "kind": "repertoire",
-            "learner_id": learner_id,
-            "fen": fen,
-            "expected_moves": [record["move_uci"] for record in repertoire["moves"]],
-            "status": "active",
-            "has_failed": False,
-        }
-
-        runtime.store.put(
-            "session",
-            drill["id"],
-            drill,
-        )
-
-        return {
-            "session_id": drill["id"],
-            "fen": fen,
-            "prompt": "Recall a move from your repertoire.",
-        }
-
-    @server.tool(description="Select a due repertoire position using transposition-aware spaced review and hide expected moves.",)
-    def get_due_repertoire_drill(learner_id: str,) -> dict[
-        str,
-        object,
-    ]:
-        fen = owner.get_runtime().training.get_due_repertoire(learner_id,)
-
-        if fen is None:
-            return {"schema_version": 1, "status": "unavailable", "reason": "No repertoire positions are due.",}
-
-        return {
-            "schema_version": 1,
-            **create_repertoire_drill(
-                learner_id,
-                fen,
-            ),
-        }
-
-    @server.tool(description="Submit a legal move to a repertoire recall drill.",)
-    def submit_repertoire_move(
-        session_id: str,
-        move: str,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        from gambit.engine.client import parse_board, parse_move
-        runtime = owner.get_runtime()
-
-        with runtime.store.lock:
-            session = runtime.store.get(
-                "session",
-                session_id,
-            )
-
-            if (
-                session is None
-                or session.get("kind",) != "repertoire"
-                or session["status"] != "active"
-            ):
-                raise ValueError("The repertoire drill is not active.",)
-
-            candidate = parse_move(
-                parse_board(session["fen"],),
-                move,
-            )
-
-            is_correct = candidate.uci() in session["expected_moves"]
-
-            if is_correct:
-                session["status"] = "completed"
-
-                runtime.training.record_attempt(
-                    session["learner_id"],
-                    get_repertoire_progress_id(session["fen"],),
-                    not session.get(
-                        "has_failed",
-                        False,
-                    ),
-                    session_id,
-                )
-            else:
-                session["has_failed"] = True
-
-            runtime.store.put(
-                "session",
-                session_id,
-                session,
-            )
-
-            return {"is_correct": is_correct, "status": session["status"],}
-
-    @server.tool(description="Inspect legal state, material, pins, attacks, and pawn structures without an engine.",)
-    def explain_position(fen: str,) -> dict[
-        str,
-        object,
-    ]:
-        return inspect_features(fen,)
-
-    @server.tool(description="Return factual isolated, doubled, and passed-pawn geometry for both sides.",)
-    def analyze_pawn_structure(fen: str,) -> dict[
-        str,
-        object,
-    ]:
-        return inspect_features(fen,)
-
-    @server.tool(description="Probe configured local Syzygy WDL and DTZ with explicit availability and draw semantics.",)
-    async def get_tablebase_result(fen: str,) -> dict[
-        str,
-        object,
-    ]:
-        return await execute_engine_request(
-            owner.get_runtime().analysis.tablebases.probe,
-            fen,
-        )
-
-    @server.tool(description="Combine endgame features with tablebase evidence or engine analysis when unavailable.",)
-    async def evaluate_endgame(fen: str,) -> dict[
-        str,
-        object,
-    ]:
-        tablebase = await get_tablebase_result(fen,)
-        analysis = None
-
-        if tablebase["status"] != "available":
-            analysis = await evaluate_position(fen,)
-
-        return {"features": inspect_features(fen,), "tablebase": tablebase, "analysis": analysis,}
-
-    @server.tool(description="Persist a learner's rating band, teaching preferences, and voice settings.",)
-    def update_learner_profile(
-        learner_id: str,
-        rating: int = 1200,
-        style: str = "socratic",
-        detail: str = "brief",
-        speech_rate: int = 170,
-        voice: str = "en",
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return owner.get_runtime().training.update_profile(
-            learner_id,
-            rating,
-            style,
-            detail,
-            speech_rate,
-            voice,
-        )
-
-    @server.tool(description="Read persisted learner preferences and a paginated training-progress view.",)
-    def get_learner_progress(
-        learner_id: str,
-        offset: int = 0,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        runtime = owner.get_runtime()
-
-        records = runtime.store.list_records(
-            "attempt",
-            100,
-            offset,
-        )
-
-        return {
-            "profile": runtime.store.get(
-                "profile",
-                learner_id,
-            ),
-            "attempts": [record for record in records if record["learner_id"] == learner_id and not record.get(
-                "is_event",
-                False,
-            )],
-            "next_offset": offset + 100 if len(records,) == 100 else None,
-        }
-
-    @server.tool(description="Import a bounded puzzle CSV batch, validating the setup move and complete source line.",)
-    async def import_puzzles(
-        csv_text: str,
-        source: str,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return await execute_engine_request(
-            owner.get_runtime().training.import_puzzles,
-            csv_text,
-            source,
-        )
-
-    @server.tool(description="Select a due puzzle near the learner's rating and begin a solution-hidden session.",)
-    def get_tactic(
-        learner_id: str,
-        theme: str = "",
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return owner.get_runtime().training.get_tactic(
-            learner_id,
-            theme,
-        )
-
-    @server.tool(description="Check a puzzle move, play the source reply, and schedule completed puzzles for review.",)
-    async def submit_tactic_move(
-        session_id: str,
-        move: str,
-        profile: str = "instant",
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return await execute_engine_request(
-            owner.get_runtime().training.submit_tactic_move,
-            session_id,
-            move,
-            profile,
-        )
-
-    @server.tool(description="Record an explicitly reported training outcome with idempotent attempt identity.",)
-    def record_training_attempt(
-        learner_id: str,
-        puzzle_id: str,
-        was_successful: bool,
-        attempt_id: str,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return owner.get_runtime().training.record_attempt(
-            learner_id,
-            puzzle_id,
-            was_successful,
-            attempt_id,
-        )
-
-    @server.tool(description="Start a persisted lesson in tactics, openings, middlegames, positioning, endgames, or calculation.",)
-    def start_lesson(
-        learner_id: str,
-        topic: str,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return owner.get_runtime().training.start_lesson(
-            learner_id,
-            topic,
-        )
-
-    @server.tool(description="Mark a lesson step complete without equating completion to demonstrated mastery.",)
-    def advance_lesson(
-        lesson_id: str,
-        step: int,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return owner.get_runtime().training.advance_lesson(
-            lesson_id,
-            step,
-        )
-
-    @server.tool(description="Use this single call for live chess tutoring. Returns instant preliminary evidence, a short speech plan, and board actions by default. Supply move to assess a learner's move in the same call. Reuse matching evidence for follow-ups; request deep only for confirmation.",)
-    async def create_tutor_turn(
-        fen: str,
-        learner_id: str = "default",
-        intent: str = "explain",
-        profile: str = "instant",
-        history: list[str] | None = None,
-        candidates: list[str] | None = None,
-        move: str | None = None,
-        is_compact: bool = True,
-        session_id: str | None = None,
-        expected_revision: int | None = None,
-        operation_id: str | None = None,
-        question: str | None = None,
-        detail: str | None = None,
-        response_mode: str = "full",
-        known_evidence_ids: list[str] | None = None,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return await execute_engine_request(
-            owner.get_runtime().tutor.create_turn,
-            fen,
-            learner_id,
-            intent,
-            profile,
-            history,
-            candidates,
-            move,
-            is_compact,
-            session_id,
-            expected_revision,
-            operation_id,
-            question,
-            detail,
-            response_mode,
-            known_evidence_ids,
-        )
-
-    @server.tool(description="Create interruptible speech segments and legal SAN/UCI pronunciations.",)
-    def get_speech_plan(
-        fen: str,
-        segments: list[str],
-        moves: list[str] | None = None,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return create_speech_plan(
-            fen,
-            segments,
-            moves,
-        )
-
-    @server.tool(description="Synthesize a short local WAV using espeak-ng. Returns a local file URI, not streamed audio.",)
-    async def synthesize_speech(
-        text: str,
-        voice: str = "en",
-        rate: int = 170,
-    ) -> dict[
-        str,
-        object,
-    ]:
-        return await execute_engine_request(
-            owner.get_runtime().speech.synthesize,
-            text,
-            voice,
-            rate,
-        )
-
-    @server.resource("gambit://curriculum",)
-    def get_curriculum() -> dict[
-        str,
-        object,
-    ]:
-        return LESSONS
-
-    @server.resource("gambit://analysis/{analysis_id}",)
-    def read_analysis(analysis_id: str,) -> dict[
-        str,
-        object,
-    ]:
-        return get_analysis(analysis_id,)
-
-    @server.prompt(description="Ground a short chess tutoring conversation in Gambit's rules, corpus, and engine evidence.",)
-    def teach_chess(
-        fen: str,
-        learner_id: str = "default",
-    ) -> str:
-        return f"Tutor learner {learner_id} at FEN {fen}. Use one create_tutor_turn call with profile instant and is_compact true per new position. Supply move in that call when assessing a learner's move. Reuse matching evidence for repetitions and follow-up explanations. Answer general chess concepts without an unnecessary tool call. Speak briefly, then ask one question. Use only supplied evidence for position-specific claims, preserve score perspective and provenance, and identify preliminary analysis. Do not wait for background deep analysis or poll before speaking. Request deep only for confirmation. For hints, do not reveal the solution. Use board directives only for the matching position."
+    @server.prompt(description='Use matching chess evidence and qualify unsupported claims.',)
+    def analyze_chess(fen: str,) -> str:
+        return f'Analyze {fen}. Use get_evidence with only needed sections, or get_position for rules. Preserve history identity, score perspective, bounds, and source limitations. Verify concrete explanations; qualify or omit unsupported claims. Treat statistics as observations and source commentary as advice. Reuse matching evidence. Never present finite search as proof.'
 
     return owner

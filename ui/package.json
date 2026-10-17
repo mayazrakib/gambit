@@ -1,0 +1,20 @@
+{
+    "name": "gambit-workspace",
+    "version": "0.3.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite --host 127.0.0.1 --port 3031 --strictPort",
+        "check": "tsc --noEmit",
+        "build": "npm run check && vite build",
+        "test": "playwright test"
+    },
+    "dependencies": {
+        "@mayazrakib/chessboard": "file:../../chessboard"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.63.0",
+        "typescript": "^5.9.3",
+        "vite": "^8.3.2"
+    }
+}

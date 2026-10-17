@@ -1,6 +1,5 @@
 import hashlib
 import json
-import os
 import shutil
 import threading
 from collections import OrderedDict, deque
@@ -20,16 +19,15 @@ from gambit.engine.client import (
     StockfishClient,
     check_request_active,
     get_request_cancellation,
-    parse_board,
     parse_move,
 )
+from gambit.game.position import build_board, get_position_reference, replay_variation
 from gambit.game.service import analyze_board, analyze_game, review_game
 from gambit.infrastructure.configuration import Configuration
 from gambit.infrastructure.storage import Store
-from gambit.knowledge.tablebases import Tablebases
 
 PROFILES = {"instant": (12000, 1), "quick": (100000, 3), "deep": (1000000, 3),}
-SPOKEN_VARIATION_PLIES = 4
+COMPACT_VARIATION_PLIES = 4
 
 class BackgroundExecutor:
     def __init__(
@@ -135,9 +133,9 @@ def compact_position_evidence(evidence: PositionEvidence,) -> PositionEvidence:
         "is_compact": True,
         "principal_variations": [
             {
-                **variation,
-                "moves_uci": variation["moves_uci"][:SPOKEN_VARIATION_PLIES],
-                "moves_san": variation["moves_san"][:SPOKEN_VARIATION_PLIES],
+                **{name: value for name, value in variation.items() if name != "observations"},
+                "moves_uci": variation["moves_uci"][:COMPACT_VARIATION_PLIES],
+                "moves_san": variation["moves_san"][:COMPACT_VARIATION_PLIES],
             }
             for variation in evidence["principal_variations"]
         ],
@@ -349,7 +347,7 @@ class EnginePool:
             queues = sorted((sample[0] for sample in self.samples),)
 
             return {
-                "schema_version": 1,
+                "schema_version": 3,
                 "search_count": self.search_count,
                 "cache_hits": self.cache_hits,
                 "pending_count": len(self.pending,),
@@ -454,7 +452,6 @@ class AnalysisService:
         self.store = store
         self.engine = engine or EnginePool(configuration,)
         self.should_close_engine = engine is None
-        self.tablebases = Tablebases(configuration.syzygy_path,)
         self.background_executor = BackgroundExecutor(configuration,)
         self.executor = self.background_executor
         self.lock = threading.Lock()
@@ -477,33 +474,6 @@ class AnalysisService:
         ] = {}
 
         self.interrupted_jobs: set[str] = set()
-
-        with store.lock:
-            rows = store.connection.execute("""
-                SELECT payload FROM record
-                WHERE collection = 'job' AND json_extract(payload, '$.status') IN ('queued', 'running', 'interrupted')
-
-                ORDER BY id
-                LIMIT 1000
-            """,).fetchall()
-
-        for row in rows:
-            job = json.loads(row[0],)
-
-            if job["status"] in ("queued", "running"):
-                job.update(
-                    status="interrupted",
-                    error="The previous server stopped before completion.",
-                )
-
-                store.put(
-                    "job",
-                    job["id"],
-                    job,
-                )
-
-            if "pgn" in job and len(self.jobs,) < configuration.max_jobs:
-                self.resume_job(job["id"],)
 
     def submit_background(
         self,
@@ -539,25 +509,13 @@ class AnalysisService:
                 )
                 for name in (
                     "engine_path", "threads_per_worker", "hash_mb_per_worker", "is_reproducible",
-                    "syzygy_path", "instant_nodes", "quick_nodes", "deep_nodes", "candidate_count",
+                    "instant_nodes", "quick_nodes", "deep_nodes", "candidate_count",
                     "instant_search_time_ms", "quick_search_time_ms", "search_time_ms", "search_depth",
                 )
             }
 
-            tablebase_files = []
-
-            for directory in self.configuration.syzygy_path.split(os.pathsep,):
-                path = Path(directory,).expanduser()
-
-                if not directory or not path.is_dir():
-                    continue
-
-                for tablebase in path.iterdir():
-                    if tablebase.suffix in (".rtbw", ".rtbz"):
-                        metadata = tablebase.stat()
-                        tablebase_files.append((str(tablebase,), metadata.st_size, metadata.st_mtime_ns),)
-
-            identity = {"schema_version": 2, "binary_sha256": binary_digest, "configuration": settings, "tablebases": sorted(tablebase_files,),}
+            settings["contract_version"] = 3
+            identity = {"schema_version": 3, "binary_sha256": binary_digest, "configuration": settings,}
 
             self.engine_fingerprint = hashlib.sha256(json.dumps(
                 identity,
@@ -648,16 +606,10 @@ class AnalysisService:
         if profile not in PROFILES:
             raise ValueError("Analysis profile must be instant, quick, or deep.",)
 
-        board = parse_board(fen,)
-
-        if len(moves or [],) > 1024:
-            raise ValueError("A position history may contain at most 1024 moves.",)
-
-        for move in moves or []:
-            board.push(parse_move(
-                board,
-                move,
-            ),)
+        board = build_board(
+            fen,
+            moves,
+        )
 
         nodes = getattr(
             self.configuration,
@@ -713,9 +665,20 @@ class AnalysisService:
             multipv,
         ),)
 
+        for variation in analysis["principal_variations"]:
+            variation["moves_uci"] = variation["moves_uci"][:24]
+            variation["moves_san"] = variation["moves_san"][:24]
+
+            variation["observations"] = replay_variation(
+                board,
+                variation["moves_uci"],
+                f"rank_{variation['rank']}",
+                moves is not None,
+            )
+
         analysis.update({
             "id": str(uuid4(),),
-            "schema_version": 1,
+            "schema_version": 3,
             "evidence_status": "preliminary" if profile != "deep" else "deeper search",
             "profile": profile,
             "score_perspective": "white",
@@ -727,6 +690,11 @@ class AnalysisService:
             "engine": self.engine.get_metadata(),
             "has_complete_history": moves is not None and fen == chess.STARTING_FEN,
             "history_scope": "from supplied root" if moves is not None else "position only",
+            "position_reference": get_position_reference(
+                board,
+                moves is not None,
+            ),
+            "limitation_codes": ["finite_search_not_proof",],
         },)
 
         check_request_active(cancellation,)
@@ -747,7 +715,7 @@ class AnalysisService:
         profile: str = "instant",
         history: list[str] | None = None,
     ) -> dict:
-        from gambit.game.assessment import assess_move, build_board
+        from gambit.game.assessment import assess_move
 
         board = build_board(
             fen,
@@ -773,29 +741,21 @@ class AnalysisService:
             [*(history or []), candidate.uci(),],
         )
 
-        before_cp = before["evaluation"]["centipawns"]
-        after_cp = after["evaluation"]["centipawns"]
-        loss = None
-
-        if before_cp is not None and after_cp is not None:
-            loss = max(
-                0,
-                (before_cp - after_cp) * (1 if board.turn else -1),
-            )
+        assessment = asdict(assess_move(
+            self.engine,
+            fen,
+            move,
+            history,
+            profile=profile,
+        ),)
 
         return {
             "move": {"san": san, "uci": candidate.uci(),},
             "before": before,
             "after": after,
-            "centipawn_loss": loss,
-            "schema_version": 1,
-            "assessment": asdict(assess_move(
-                self.engine,
-                fen,
-                move,
-                history,
-                profile=profile,
-            ),),
+            "centipawn_loss": assessment["verified"]["centipawn_loss"],
+            "schema_version": 3,
+            "assessment": assessment,
         }
 
     def start_job(
@@ -815,7 +775,7 @@ class AnalysisService:
             self.jobs = {key: pair for key, pair in self.jobs.items() if not pair[0].done()}
             job_id = str(uuid4(),)
             cancellation = threading.Event()
-            job = {"id": job_id, "status": "queued", "completed_searches": 0, "pgn": pgn, "should_review": should_review, "schema_version": 1,}
+            job = {"id": job_id, "status": "queued", "completed_searches": 0, "pgn": pgn, "should_review": should_review, "schema_version": 3,}
 
             self.store.put(
                 "job",
@@ -835,47 +795,6 @@ class AnalysisService:
 
         return job
 
-    def resume_job(
-        self,
-        job_id: str,
-    ) -> GameJob:
-        with self.lock:
-            job = self.store.get(
-                "job",
-                job_id,
-            )
-
-            if job is None or job["status"] not in ("interrupted", "failed", "cancelled") or "pgn" not in job:
-                raise ValueError("The job has no resumable input or is already active.",)
-
-            if sum((not future.done() for future, _ in self.jobs.values()),) >= self.configuration.max_jobs:
-                raise RuntimeError("The analysis job queue is full.",)
-
-            cancellation = threading.Event()
-
-            job.update(
-                status="queued",
-                error=None,
-            )
-
-            self.store.put(
-                "job",
-                job_id,
-                job,
-            )
-
-            future = self.executor.submit(
-                self.run_job,
-                job_id,
-                job["pgn"],
-                job["should_review"],
-                cancellation,
-            )
-
-            self.jobs[job_id] = (future, cancellation)
-
-        return job
-
     def run_job(
         self,
         job_id: str,
@@ -883,7 +802,7 @@ class AnalysisService:
         should_review: bool,
         cancellation: threading.Event,
     ) -> None:
-        job = {"id": job_id, "status": "running", "completed_searches": 0, "pgn": pgn, "should_review": should_review, "schema_version": 1, "reused_searches": 0,}
+        job = {"id": job_id, "status": "running", "completed_searches": 0, "pgn": pgn, "should_review": should_review, "schema_version": 3, "reused_searches": 0,}
 
         self.store.put(
             "job",
@@ -892,35 +811,6 @@ class AnalysisService:
         )
 
         service = self
-        executable = shutil.which(self.configuration.engine_path,)
-        binary_digest = "unavailable"
-
-        if executable:
-            try:
-                with Path(executable,).open("rb",) as engine_file:
-                    binary_digest = hashlib.file_digest(
-                        engine_file,
-                        "sha256",
-                    ).hexdigest()
-            except OSError as exception:
-                job.update(
-                    status="failed",
-                    error=f"The engine executable could not be fingerprinted: {exception}.",
-                )
-
-                self.store.put(
-                    "job",
-                    job_id,
-                    job,
-                )
-
-                return
-
-        fingerprint = json.dumps(
-            {"engine": binary_digest, "configuration": asdict(self.configuration,),},
-            sort_keys=True,
-        )
-
         engine_metadata = self.engine.get_metadata()
 
         class JobEngine:
@@ -944,14 +834,6 @@ class AnalysisService:
                     "checkpoint",
                     checkpoint_key,
                 )
-
-                if checkpoint is None:
-                    legacy_key = hashlib.sha256(json.dumps([job_id, fingerprint, *position_identity,],).encode(),).hexdigest()
-
-                    checkpoint = service.store.get(
-                        "checkpoint",
-                        legacy_key,
-                    )
 
                 if checkpoint is not None:
                     engine_metadata.update(checkpoint.get(
@@ -1069,5 +951,3 @@ class AnalysisService:
 
         if self.should_close_engine:
             self.engine.close()
-
-        self.tablebases.close()

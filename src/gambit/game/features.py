@@ -89,7 +89,7 @@ def calculate_features(fen: str,) -> dict:
                 fork_candidates.append({
                     "attacker": chess.square_name(square,),
                     "targets": targets,
-                    "is_forced_win": False,
+                    "has_verified_material_gain": False,
                 },)
 
         sides[name] = {
@@ -102,8 +102,8 @@ def calculate_features(fen: str,) -> dict:
                 chess.FILE_NAMES[index] for index in range(8,) if pawn_files.count(index,) > 1
             ],
             "pinned_pieces": pinned_piece_squares,
-            "undefended_pieces": undefended_piece_squares,
-            "fork_candidates": fork_candidates,
+            "geometrically_undefended_pieces": undefended_piece_squares,
+            "geometric_multi_target_attacks": fork_candidates,
             "has_bishop_pair": len(board.pieces(
                 chess.BISHOP,
                 color,
@@ -118,7 +118,7 @@ def calculate_features(fen: str,) -> dict:
         "is_check": board.is_check(),
         "is_checkmate": board.is_checkmate(),
         "is_stalemate": board.is_stalemate(),
-        "can_claim_fifty_moves": board.can_claim_fifty_moves(),
+        "can_claim_fifty_moves": not board.is_game_over() and board.can_claim_fifty_moves(),
         "provenance": "rules and geometric features",
-        "caveat": "Geometric attacks and undefended pieces do not by themselves prove a tactical win.",
+        "limitation_codes": ["geometric_attack_not_legal_capture", "material_gain_unverified",],
     }

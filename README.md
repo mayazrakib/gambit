@@ -1,91 +1,76 @@
 # Gambit
 
-`gambit` is a local chess analysis and tutoring server for the Model Context Protocol (MCP). It gives an MCP host access to Stockfish analysis, opening records, game reviews, puzzles, and learner history. The host's language model handles the conversation; Gambit supplies chess evidence and stores learning state.
+Gambit is an MCP server for validated chess facts, local Stockfish analysis, and attributed chess information. The connected AI writes explanations and supplies audio. Gambit distinguishes computed facts, finite engine searches, tablebase results, source commentary, and observed game statistics. It cannot guarantee that an AI's explanation is correct.
 
 ## Install and connect
 
-Gambit requires Python 3.14 or newer, uv, and a compatible Stockfish executable. From the project directory:
+Install Python 3.14, uv, and Stockfish, then run:
+
 ```sh
-uv sync
+uv sync --extra vision
 uv run gambit initialize
 uv run gambit
 ```
 
-`initialize` loads the bundled opening corpus into the local SQLite database. The final command starts MCP over standard input and output. Configure an MCP host to run `uv --directory /absolute/path/to/gambit run gambit`.
+`initialize` validates the bundled, version-pinned opening classifications. It does not download games, puzzles, evaluations, or tablebases. Explicit opening updates use `uv run gambit update-openings --revision FULL_COMMIT_SHA`; all five ECO volumes are validated before atomically replacing the snapshot. MCP uses standard input and output by default. Configure a host to launch `uv --directory /absolute/path/to/gambit run gambit`. Set `STOCKFISH_PATH` for another executable and `GAMBIT_CONFIG` for a TOML configuration based on [the example](examples/configuration.toml).
 
-Set `STOCKFISH_PATH` to choose the engine, `GAMBIT_DATABASE` to choose the database, and `GAMBIT_CONFIG` to point to a local TOML file. Copy [the example configuration](examples/configuration.toml) to set worker counts, analysis budgets, cache size, and optional tablebase paths. The default pool uses two Stockfish workers, one engine thread and 64 MiB of hash per worker.
+The HTTP transport uses `uv run gambit serve --transport streamable-http --port 3025`. It binds to loopback and serves MCP at `/mcp`. Existing tunnel service templates remain supported; installing or changing remote infrastructure is a separate operation. Preserve package-local `.env` credentials.
 
-## Chess tools and evidence
+## Evidence tools
 
-The MCP host discovers tool schemas from the server. For live tutoring, use one `create_tutor_turn` call per new position. Its default `instant` profile returns compact evidence and speech guidance; supply `move` to assess a learner's move in the same call. Reuse matching evidence for follow-up explanations. Set `is_compact` to `false` or retrieve the analysis ID with `get_analysis` when a full report is needed. The repository's [chess tutoring skill](.agents/skills/chess_tutor/SKILL.md) defines this workflow.
+The server exposes 27 tools. `get_position` returns board state, material, legal moves, and optional typed rules answers without engine or network work. Supply `fen` with optional `history`, or a live `game_id` with `expected_revision`. Optional `continuation` explores a hypothetical line without changing the game.
 
-Interactive evaluation, candidate assessment, and teaching submissions default to `instant`. Single-position legacy tools default to 12,000 nodes and one variation. Request `deep` explicitly for two-budget candidate confirmation. Preliminary teaching feedback does not count as confirmed progress; an inconclusive session stays active for deeper resubmission. `parse_game`, `analyze_game`, and `review_game` handle Portable Game Notation (PGN) games. Whole-game jobs retain their review budgets and can be started, polled, cancelled, and resumed.
+`get_evidence` combines selected `facts`, `analysis`, `openings`, `statistics`, `cloud`, and `tablebase` sections. The default is local facts and instant preliminary analysis. External information is opt-in. `analyze_position` accepts either `fen` with optional `history`, or up to 128 `positions` containing those fields. Batches return `items` in request order. Both forms share `profile` and `is_compact`. `analyze_move` and `compare_moves` assess legal candidates.
 
-The `instant`, `quick`, and `deep` profiles default to 12,000, 100,000, and 1,000,000 search nodes. These are work budgets, not response-time promises. Worker queueing, CPU load, and position complexity affect latency. New evaluation tools report scores from White's perspective; legacy `analyze_position` and `tutor_move` retain side-to-move scores. Mate results are separate from centipawn scores.
+`read_board` converts a board image to FEN with reliability information. Check uncertain recognition before passing the position to analysis. `read_pgn` validates a game without an engine. `analyze_game` includes move classifications and player summaries by default; set `should_review=false` for analysis only. Background game analysis uses `start_game_analysis`, `get_analysis_job`, and `cancel_analysis_job`. `get_metrics` reports process-local analysis metrics.
 
-Engine startup runs during server initialization. Searches at or below the instant and quick node budgets also have default engine time limits of 150 and 600 milliseconds, capped by `search_time_ms`. These limits exclude startup, queueing, transport, and audio. Repeated evaluations reuse stored evidence with matching profile and history. Server logs report operation queue and execution times; ChatGPT controls Voice scheduling and delivery.
+Engine scores are White-relative. Mate scores use moves, while tablebase distances use plies. Search bounds and preliminary status remain explicit. A principal variation is not exhaustive proof. Position references include history identity and scope. Unknown prior history cannot rule out repetition. API failures preserve available local sections. Responses use native structured content without duplicating the payload in text.
 
-Supply the initial Forsyth-Edwards notation (FEN) position and move history when repetition matters. A FEN alone cannot establish earlier repetitions. Review labels describe Gambit's policy, not Stockfish's native labels or a rating estimate. Candidate comparisons can return `uncertain` when searches disagree.
+`get_analysis` retrieves full temporary evidence. Missing references return `status: expired`; recompute when necessary. Evidence, jobs, and API caches are bounded and process-local. Restart clears them. Source comments are attributed advice, not verified engine explanations.
 
-`start_progressive_analysis` returns an early result while deeper work continues. Progressive requests are short-lived and do not survive a server restart. Whole-game jobs save completed searches to SQLite and can resume from checkpoints. Cancelling a job stops active engine searches; completed reports remain readable.
+## Information sources
 
-## Openings, practice, and optional features
+| Information | Access |
+|---|---|
+| Opening names, ECO codes, and identifying lines | Bundled Lichess opening classifications, revision pinned |
+| Masters and Lichess move outcomes | `get_opening_stats`, opening-explorer API |
+| Public puzzles | `get_puzzle`, Lichess API |
+| Selected games | `get_game`, Lichess or Masters API |
+| Annotated studies | `get_study`, explicit public study and chapter IDs |
+| Existing cloud evaluations | `get_cloud_analysis`, Lichess API |
+| Endgames with at most seven pieces and no castling rights | `get_tablebase`, remote tablebase API |
+| One explicit Chess.com account month | `get_chesscom_games`, API only |
 
-The bundled opening data contains 3,864 named Lichess lines. `initialize_openings` loads them, and `import_study` and `import_opening_tsv` add sourced local material. Repertoire drills share review history across transpositions. Corpus membership does not show that a move is best, and Gambit does not download extra opening or game data on its own.
+The [opening corpus](https://github.com/lichess-org/chess-openings) provides classifications, not complete opening theory. Explorer responses retain population, filters, outcomes, sample size, and example references. Popularity does not establish quality. Providers may require authentication, throttle requests, omit positions, or lack exhaustive search. Set `GAMBIT_LICHESS_TOKEN` for opening-explorer authentication when required; it is sent only to the explorer host. Study selection is explicit; arbitrary annotated-study search is not provided. Licenses absent from source responses remain unknown.
 
-For lessons, use `start_teaching_session`, `get_teaching_hint`, and `submit_teaching_move`. Gambit records attempts and spaced review. Assisted answers do not count as independent successes. `import_puzzles` accepts sourced Lichess-format puzzles; a move outside the source line is checked separately instead of being called a mistake automatically. `create_game_lessons` builds lessons from a saved game report. Learning counts are history, not a calibrated mastery score.
+The HTTP client reuses connections, serializes requests per provider, deduplicates matching cacheable requests, bounds response size and elapsed time, and respects rate-limit cooldowns. Cloud lookup does not request remote engine execution. Chess.com responses are not cached or indexed on disk. No learner profiles, personal account defaults, conversation history, or review scheduler exist.
 
-Set `syzygy_path` to use local Syzygy tablebases. Missing files produce an unavailable result; tablebase files are never downloaded automatically. `get_tablebase_diagnostics` checks local paths and file pairs, while `scripts/check_tablebases.py` can verify files against a trusted checksum manifest.
+## Local playing workspace
 
-`get_speech_plan` prepares move text for speech. With espeak-ng installed, `synthesize_speech` writes a local WAV file; remote clients cannot read that file URI automatically. Screenshot recognition requires `uv sync --extra vision` and the optional model described in [third-party notices](src/gambit/THIRD_PARTY_NOTICES.md). Gambit does not provide microphone input, streamed audio, or a built-in conversational model.
+Build the sibling `../chessboard`, then run:
 
-## Personal game archive
-
-Import your Chess.com history once, then use the same command to sync new games:
 ```sh
-uv run python scripts/sync_games.py --username mayazrakib
+npm --prefix ui install
+npm --prefix ui run build
+uv run gambit play --port 3030
 ```
 
-Gambit keeps monthly JSON archives, including PGNs and game metadata, under `runtime/downloads` and indexes standard games in `runtime/corpus.sqlite3`. The first sync downloads every listed month. Later syncs revalidate the archive index, current month, and previous month using ETag and Last-Modified headers. Older downloaded months stay local; `--refresh` revalidates them too. Requests to Chess.com are sequential, rate-limit retries respect Retry-After, and unchanged responses reuse local files. The API can lag behind completed games. See the [Chess.com API documentation](https://www.chess.com/news/view/published-data-api).
+Open `http://127.0.0.1:3030`. This process also serves `/mcp`. UI and MCP share the active game only within that process. Restart clears the game, variations, annotations, and evidence. `analyze_live_game` returns evidence and publishes revision-matched annotations. `get_live_game` omits full history by default. `annotate_live_game` changes only the annotation group. Hint mode hides solutions. Opponent strength is independent of analysis strength.
 
-From MCP, use `manage_chess_data` with action `sync_games`, then inspect action `status`. This path syncs personal games without downloading the bulk teaching datasets. Game URLs identify games across repeated imports and updated annotations. Use `search_chess_material` and `get_chess_game` to select a local game for review.
+Local routes enforce loopback peers, approved host/origin, request type, and size. `GAMBIT_UI_ORIGIN` can allow an exact HTTPS Tailscale origin through Serve. Browser events do not establish automatic spoken commentary or remote voice latency.
 
-Downloading and importing games never starts Stockfish. Analyze requested games or selected training examples separately. Whole-game searches reuse durable checkpoints across jobs and restarts when engine identity, analysis settings, root position, and move history match. Changed evidence inputs trigger new analysis. Repository runtime data remains outside Git and shares the 20 GB capacity limit.
+## Migration from version 0.2
 
-## Background service
+Version 0.3 introduces contract version 3 at `gambit://contracts/v3`. Learner, repertoire, tutoring-session, practice-progress, dataset synchronization, speech, and local tablebase interfaces are removed. Replace `create_tutor_turn` with `get_evidence`; replace personal archive sync with bounded `get_chesscom_games` requests. `analyze_position` now reports White-relative scores. Remove `database_path`, `syzygy_path`, speech, automatic-refinement, and prefetch options from TOML configuration. `GAMBIT_DATABASE` no longer configures storage.
 
-The default MCP transport is stdio. On Linux with systemd, Gambit can instead serve streamable HTTP on `127.0.0.1:3025/mcp` behind an outbound tunnel. Copy [.env.example](.env.example) to the ignored package-local `.env`, fill in the tunnel credentials, and keep the file private. The HTTP server has no independent authentication, so keep it on loopback.
+The simplified MCP catalog replaces the earlier tool names without aliases. Use `get_position` instead of `inspect_position`, `list_legal_moves`, or `query_chess_facts`; use `analyze_position` instead of `evaluate_position` or `analyze_positions`. It uses search profiles and returns structured evidence rather than the former `lines` response. Use `analyze_game` instead of `review_game`, `read_board` instead of `recognize_chessboard` or `analyze_chessboard`, and `analyze_live_game` instead of `teach_live_game`. Opening tools are `find_openings`, `get_opening`, and `get_opening_stats`. Reconnect clients after restarting the updated server to refresh their tool catalogs.
 
-After installing the tunnel client and running `uv sync`, install the user services with:
-```sh
-chmod 600 .env
-uv run python scripts/install_services.py
-loginctl enable-linger "$USER"
-systemctl --user status gambit.service gambit_tunnel.service
-```
+Preview recognized obsolete artifacts under `GAMBIT_RUNTIME_DIRECTORY` with `uv run gambit cleanup`. Apply removal with `uv run gambit cleanup --apply` while old Gambit processes are stopped. Cleanup removes recognized personal databases, local downloads, tablebases, and dependent metadata without creating a backup. It preserves opening snapshots, configuration, credentials, symlinks, and unclassified files. Inspect reported preserved files separately. Cleanup covers the specified runtime root, not external backups or forensic erasure.
 
-The installer enables Gambit and the tunnel as separate services. Restart both after changing `.env` with `systemctl --user restart gambit.service gambit_tunnel.service`. The tunnel can reconnect without restarting Gambit; restarting Gambit interrupts unfinished work. Host shutdown or suspension also interrupts availability.
+## Development
 
-## Storage and development
-
-Gambit stores analysis and learning records in SQLite. `scripts/maintain_storage.py` backs up a live database with SQLite's backup API, restores into a new file, and previews retention before applying it. Retention is never automatic. For example:
-```sh
-uv run python scripts/maintain_storage.py backup --path /absolute/path/to/new_backup.sqlite3
-uv run python scripts/maintain_storage.py prune --age-days 90
-```
-
-Run the local checks from the project directory:
-```sh
-uv run pytest
-uv run ruff check src test scripts
-uv run python scripts/format_code.py --check
-uv build
-```
-
-Installed Stockfish and the vision extra are needed for their respective integration tests. These checks cover chess and protocol behavior; they do not measure tutoring quality, model generation latency, or remote tunnel latency.
-
-The package groups its contracts, engine integration, game analysis, infrastructure, knowledge sources, learning services, MCP server, and optional vision support into matching subpackages under `src/gambit/`.
+Run `uv run pytest`, `uv run ruff check src test scripts`, `uv run python scripts/format_code.py --check`, and `uv run python scripts/generate_tutor_skill.py --check`. Frontend validation uses `npm --prefix ui run build` and `npm --prefix ui test`. API tests use deterministic fixtures; live provider smoke checks are separate. Run `uv run python scripts/benchmark_mcp.py` for local MCP latency and response-size measurements. These exclude model generation and audio.
 
 ## License
 
-Gambit is released under the [MIT license](LICENSE). Stockfish, python-chess, the bundled opening corpus, and optional vision assets retain their own licenses and attribution.
+MIT. See [LICENSE](LICENSE) and [third-party notices](src/gambit/THIRD_PARTY_NOTICES.md).

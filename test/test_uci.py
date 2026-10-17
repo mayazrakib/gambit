@@ -13,15 +13,16 @@ def test_bound_scores_do_not_replace_exact_variations(bound: str,) -> None:
         {"depth": 18,},
     ) is None
 
-def test_truncates_invalid_continuation_and_preserves_metrics() -> None:
+def test_preserves_valid_variations_and_metrics() -> None:
     parsed = parse_analysis_line(
-        "info multipv 2 score mate -4 pv e2e4 e7e5 invalid g1f3".split(),
+        "info multipv 2 score mate -4 pv e2e4 e7e5".split(),
         {"depth": 18, "nodes": 250, "time": 12,},
     )
 
     assert parsed == (2, {
         "centipawns": None,
         "mate_in": -4,
+        "score_bound": "exact",
         "pv": [chess.Move.from_uci("e2e4",), chess.Move.from_uci("e7e5",),],
         "depth": 18,
         "actual_nodes": 250,

@@ -1,0 +1,3 @@
+export const KNIGHT_ICON = '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8 27h18M10 24c0-6 8-7 8-12l-5 4-6-2 4-7 5-2 1-3 4 4c4 4 6 9 4 18H10Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="9" r="1" fill="var(--icon-eye, #fffefa)"/></svg>';
+export const PLUS_ICON = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+export const VOICE_ICON = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';

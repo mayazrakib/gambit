@@ -1,0 +1,62 @@
+:root {
+    --neutral_1: #ffffff;
+    --neutral_2: #fafafa;
+    --neutral_3: #f3f3f3;
+    --neutral_4: #e8e8e8;
+    --neutral_5: #dedede;
+    --neutral_8: #999999;
+    --neutral_10: #666666;
+    --neutral_11: #404040;
+    --neutral_12: #1f1f1f;
+    --background: var(--neutral_1);
+    --foreground: var(--neutral_12);
+    --primary: var(--neutral_11);
+    --secondary: var(--neutral_3);
+    --accent: var(--neutral_4);
+    --muted: var(--neutral_10);
+    --border: var(--neutral_5);
+    --input: var(--neutral_8);
+    --surface: var(--neutral_2);
+    --error: #8b2323;
+    --error-border: #c99393;
+    --error-surface: #fff8f8;
+    --thinking: #8c5c15;
+    color-scheme: light;
+}
+
+[data-theme="dark"] {
+    --neutral_1: #111111;
+    --neutral_2: #161616;
+    --neutral_3: #1c1c1c;
+    --neutral_4: #242424;
+    --neutral_5: #2d2d2d;
+    --neutral_8: #666666;
+    --neutral_10: #999999;
+    --neutral_11: #bdbdbd;
+    --neutral_12: #f2f2f2;
+    --error: #f2adad;
+    --error-border: #895050;
+    --error-surface: #241616;
+    --thinking: #d8b471;
+    color-scheme: dark;
+}
+
+.theme_toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--foreground);
+    line-height: 1;
+}
+
+.theme_toggle svg { width: 16px; height: 16px; stroke-width: 1.6; }
+chess-board { --chessboard-material-color: var(--foreground); --chessboard-material-muted: var(--muted); }
+[data-theme="dark"] .status_dot { background: #83b68c; }
+[data-theme="dark"] .is_offline { background: #d8b471; }

@@ -41,49 +41,8 @@ class CountingPool(EnginePool,):
 
         return [{"centipawns": 20, "mate_in": None, "pv": [move,], "depth": 10, "actual_nodes": nodes,},]
 
-def test_durable_evidence_survives_restart_and_separates_history(tmp_path,):
-    database_path = str(tmp_path / "evidence.sqlite3",)
-    configuration = Configuration()
-    store = Store(database_path,)
-    pool = CountingPool(configuration,)
-
-    first_service = AnalysisService(
-        configuration,
-        store,
-        pool,
-    )
-
-    first = first_service.evaluate(chess.STARTING_FEN,)
-    first_service.close()
-    store.close()
-    store = Store(database_path,)
-
-    second_service = AnalysisService(
-        configuration,
-        store,
-        pool,
-    )
-
-    try:
-        second = second_service.evaluate(chess.STARTING_FEN,)
-        assert second["id"] == first["id"]
-        assert pool.searches == 1
-
-        historical = second_service.evaluate(
-            chess.STARTING_FEN,
-            moves=[],
-        )
-
-        assert historical["id"] != first["id"]
-        assert historical["has_complete_history"]
-        assert store.count_records("analysis",) == 2
-    finally:
-        second_service.close()
-        store.close()
-        pool.close()
-
 def test_changed_engine_configuration_cannot_reuse_evidence(tmp_path,):
-    store = Store(str(tmp_path / "evidence.sqlite3",),)
+    store = Store()
     first_configuration = Configuration(instant_nodes=100,)
     second_configuration = Configuration(instant_nodes=200,)
     first_pool = CountingPool(first_configuration,)
@@ -114,7 +73,7 @@ def test_changed_engine_configuration_cannot_reuse_evidence(tmp_path,):
         store.close()
 
 def test_concurrent_evidence_publishes_once():
-    store = Store(":memory:",)
+    store = Store()
     configuration = Configuration()
     pool = CountingPool(configuration,)
 
@@ -135,7 +94,7 @@ def test_concurrent_evidence_publishes_once():
 
         assert len({result["id"] for result in results},) == 1
         assert pool.searches == 1
-        assert store.count_records("analysis",) == 1
+        assert len(store.records["analysis"],) == 1
     finally:
         service.close()
         pool.close()
@@ -208,58 +167,6 @@ def test_automatic_background_disabled_for_one_worker():
 
         assert executor.submit(lambda: 2,).result(timeout=1,) == 2
     finally:
-        executor.shutdown()
-
-def test_anticipation_is_bounded_and_cancels_before_publishing():
-    executor = BackgroundExecutor(Configuration(worker_count=2,),)
-    entered = threading.Barrier(3,)
-    release = threading.Event()
-    was_invoked = threading.Event()
-    cancellation = threading.Event()
-
-    def occupy_worker(should_publish,):
-        entered.wait(timeout=3,)
-        assert release.wait(5,)
-        check_request_active()
-
-        if should_publish:
-            was_invoked.set()
-
-    first = executor.submit(
-        occupy_worker,
-        False,
-        is_anticipation=True,
-    )
-
-    second = executor.submit(
-        occupy_worker,
-        True,
-        cancellation=cancellation,
-        is_anticipation=True,
-    )
-
-    entered.wait(timeout=3,)
-
-    try:
-        with pytest.raises(
-            RuntimeError,
-            match="two anticipated",
-        ):
-            executor.submit(
-                lambda: None,
-                is_anticipation=True,
-            )
-
-        cancellation.set()
-        release.set()
-        first.result(timeout=1,)
-
-        with pytest.raises(InterruptedError,):
-            second.result(timeout=1,)
-
-        assert not was_invoked.is_set()
-    finally:
-        release.set()
         executor.shutdown()
 
 def test_shared_candidate_searches_feed_assessment_without_extra_work():
@@ -426,7 +333,7 @@ def test_background_search_admission_yields_between_game_positions():
         pool.close()
 
 def test_cancelled_search_cannot_publish_durable_evidence():
-    store = Store(":memory:",)
+    store = Store()
     configuration = Configuration()
     entered = threading.Event()
     release = threading.Event()
@@ -473,68 +380,10 @@ def test_cancelled_search_cannot_publish_durable_evidence():
             with pytest.raises(InterruptedError,):
                 future.result(timeout=2,)
 
-        assert store.count_records("analysis",) == 0
+        assert len(store.records["analysis"],) == 0
         assert not service.evidence_pending
     finally:
         release.set()
         service.close()
         pool.close()
         store.close()
-
-def test_whole_game_reviews_reuse_matching_searches_across_jobs_and_restart(tmp_path,):
-    database_path = str(tmp_path / "games.sqlite3",)
-    configuration = Configuration()
-    pool = CountingPool(configuration,)
-    store = Store(database_path,)
-
-    service = AnalysisService(
-        configuration,
-        store,
-        pool,
-    )
-
-    try:
-        first = service.start_job("1. e4 e5 *",)
-        service.jobs[first["id"]][0].result(timeout=30,)
-
-        assert store.get(
-            "job",
-            first["id"],
-        )["status"] == "completed"
-
-        searches = pool.searches
-        assert searches > 0
-        service.close()
-        store.close()
-        store = Store(database_path,)
-
-        service = AnalysisService(
-            configuration,
-            store,
-            pool,
-        )
-
-        second = service.start_job("1. e4 e5 *",)
-        service.jobs[second["id"]][0].result(timeout=30,)
-
-        report = store.get(
-            "job",
-            second["id"],
-        )
-
-        assert report["status"] == "completed"
-        assert report["reused_searches"] == report["completed_searches"]
-        assert pool.searches == searches
-        changed = service.start_job("1. d4 d5 *",)
-        service.jobs[changed["id"]][0].result(timeout=30,)
-
-        assert store.get(
-            "job",
-            changed["id"],
-        )["status"] == "completed"
-
-        assert pool.searches > searches
-    finally:
-        service.close()
-        store.close()
-        pool.close()

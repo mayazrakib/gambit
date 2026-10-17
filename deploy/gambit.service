@@ -1,5 +1,5 @@
 [Unit]
-Description=Gambit chess tutoring MCP server.
+Description=Gambit chess evidence MCP server.
 StartLimitIntervalSec=60
 StartLimitBurst=5
 

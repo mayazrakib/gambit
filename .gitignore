@@ -9,3 +9,7 @@ dist/
 .env.*
 !.env.example
 runtime/
+ui/node_modules/
+ui/test-results/
+ui/playwright-report/
+src/gambit/web/assets/

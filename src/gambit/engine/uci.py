@@ -1,4 +1,4 @@
-from typing import NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 import chess
 
@@ -6,6 +6,13 @@ class EngineLine(TypedDict,):
     centipawns: int | None
     mate_in: int | None
     pv: list[chess.Move]
+
+    score_bound: NotRequired[Literal[
+        "exact",
+        "lower",
+        "upper",
+    ]]
+
     depth: NotRequired[int]
     actual_nodes: NotRequired[int]
     engine_time_ms: NotRequired[int]
@@ -80,13 +87,14 @@ def parse_analysis_line(
     for token in tokens[pv_index + 1 :]:
         try:
             moves.append(chess.Move.from_uci(token,),)
-        except ValueError:
-            break
+        except ValueError as exception:
+            raise RuntimeError("Stockfish returned malformed principal variation notation.",) from exception
 
     return rank, {
         "centipawns": score_value if score_type == "cp" else None,
         "mate_in": score_value if score_type == "mate" else None,
         "pv": moves,
+        "score_bound": "exact",
         "depth": metrics.get(
             "depth",
             0,

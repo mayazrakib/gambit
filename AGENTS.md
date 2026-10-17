@@ -1,59 +1,33 @@
 # `AGENTS.md`
 
 ## 1. Scope
-This specification governs formatting for internally controlled code in the `chessboard` package.
 
-This specification applies to source code, tests, scripts, configuration containing code, generated code, and code embedded in strings or documentation.
+Artificial intelligence (AI) agents MUST follow these instructions when working in Gambit. Workspace work also follows the applicable rules in the workspace's `agents/` checkout.
 
-Externally controlled code MAY retain its required format at the compatibility boundary. Internally controlled code MUST conform immediately beyond that boundary.
+## 2. Responsibilities
 
-## 2. General Formatting
+Gambit provides validated chess facts, bounded local Stockfish analysis, attributed API information, and a localhost playing workspace. The connected host owns all explanations and audio. Agents MUST preserve contract version 3, score perspectives, source attribution, history identity, and finite-search limitations. Agents MUST NOT add learner tracking, personalized databases, server-authored explanations, or speech synthesis.
 
-- Code MUST use 4 spaces for indentation.
-- Code MUST NOT use tabs for indentation.
-- Code MUST be syntactically valid.
-- Code MUST NOT contain trailing whitespace.
-- Text files containing code MUST end with exactly one newline where the format permits it.
-- Code MUST NOT contain two or more consecutive blank lines.
-- Code MUST avoid unnecessary blank lines, dense formatting, and gratuitous horizontal alignment.
-- Code MUST use consistent delimiter and operator spacing.
-- Code MUST make logical structure visually apparent.
-- Code MUST use explicit grouping when operator precedence could be unclear.
-- Statements SHOULD normally occupy separate lines.
-- Complex expressions SHOULD use named intermediate values when decomposition improves clarity.
-- Deeply nested expressions SHOULD be avoided.
-- Trailing commas SHOULD appear in every nonempty comma-separated list where syntax permits and semantics remain unchanged.
+Python modules live under `src/gambit/`. `providers/` owns bounded remote requests and provider semantics. `knowledge/` owns the opening-classification corpus. `game/` owns position facts and evidence composition. `live/` owns temporary game state and the separate Stockfish opponent. `server/` exposes MCP and protected localhost routes. `ui/src/` owns browser presentation.
 
-## 3. Code Body Structure
+## 3. State and Privacy
 
-Code bodies MUST use logical and conceptual separation.
+Only opening classifications, their index and metadata, and non-personal configuration may persist. Agents MUST keep games, evidence, jobs, and API caches bounded and process-local. Agents MUST NOT persist usernames, personal game history, conversations, or learner information. Restart clears game and evidence references. Separate processes do not share games.
 
-Within a function, method, branch, loop, class body, test body, or similar executable block:
-- Closely related statements forming one operation MUST remain adjacent.
-- Conceptually distinct groups of statements MUST be separated by exactly one blank line.
-- A control-flow construct and its complete attached continuation chain MUST form its own logical section.
-- Exactly one blank line MUST separate a control-flow section from preceding or following statements in the same code body.
-- Control-flow constructs include `if`, loops, `switch`, `try`, and equivalent constructs that introduce a block.
-- Attached continuations, including `else if`, `else`, `catch`, `finally`, `elif`, and `except`, MUST remain attached to the preceding control-flow construct without a blank line.
-- Every `return` statement MUST form its own logical section.
-- Exactly one blank line MUST separate a `return` statement from preceding or following statements in the same code body.
-- A control-flow construct or `return` statement at the beginning or end of a code body MUST NOT add blank-line padding beside the opening or closing delimiter.
-- A `return` statement that is the only statement in a code body MUST NOT have blank-line padding.
-- Statements inside a control-flow block form a new code body. This section MUST apply independently within that nested body.
-- A blank line MUST NOT appear between a block signature and the first statement in its body.
+Agents MUST preserve unrelated dirty work, `.env`, and credentials. Agents MUST NOT print secrets. Authorized cleanup MUST be scoped to recognized Gambit runtime artifacts, support preview, preserve unknown files, and avoid personal backups. Local tablebase and bulk data downloads MUST NOT be introduced. Chess.com history and tablebases are API-only. Personal identifiers and response bodies MUST NOT appear in logs.
 
-## 4. Signatures and Calls
+## 4. Correctness and Playing Workspace
 
-- Function signatures, method signatures, constructors, type constructors, generic invocations, and calls with zero or one parameter or argument MUST remain horizontal where syntax permits.
-- Function signatures, method signatures, constructors, type constructors, generic invocations, and calls with two or more parameters or arguments MUST use vertical formatting.
-- Each vertically formatted parameter or argument MUST occupy its own line.
-- The opening delimiter MUST remain on the signature or call line where syntax permits.
-- The closing delimiter MUST occupy its own line.
-- Vertically formatted parameters and arguments MUST align by indentation rather than manual spaces.
-- Vertically formatted parameter and argument lists SHOULD use trailing separators where syntax permits.
+Agents MUST validate legal positions, moves, turn ownership, game identifiers, and expected revisions. Stale results MUST NOT publish annotations. Claimable draws MUST remain distinct from terminal outcomes. Rules facts MUST distinguish attacks, captures, and pins. Unknown history MUST remain explicit. Scores MUST remain White-relative; mate units, bounds, and tablebase conditions MUST remain intact. Caches MUST include all evidence inputs and contract version.
 
-## 5. Embedded and Generated Code
+The frontend MUST use the sibling `@mayazrakib/chessboard` package without copying its implementation. Opponent strength MUST remain separate from evidence analysis. Hints MUST hide solution moves and evidence references. Optimistic moves MUST roll back on rejection. Board events MUST replace model polling. UI restart and temporary-state semantics MUST remain visible.
 
-Code embedded in strings, templates, HTML, documentation, or generated output MUST follow this specification as though the code were stored in a standalone source file.
+HTTP MUST bind to loopback. UI routes MUST validate client, host, origin, content type, and request size. An exact configured HTTPS `.ts.net` origin may be accepted through loopback using `GAMBIT_UI_ORIGIN`. Forwarded headers MUST NOT replace the actual peer. Agents MUST preserve the existing remote MCP connection without infrastructure changes.
 
-Code generators MUST generate conforming output. The authoritative generator or template MUST be corrected when generated output violates this specification.
+## 5. Skills and Verification
+
+Canonical chess rules and skills live in the workspace `agents/` repository. Agents MUST edit authoritative sources and use `scripts/generate_tutor_skill.py` to regenerate `.agents/skills/chess_tutor/`. Generation MUST pass `--check`. The retained `chess_tutor` identifier is an explicit compatibility exception to hyphenated skill naming.
+
+Backend checks use `uv run pytest`, `uv run ruff check src test scripts`, and `uv run python scripts/format_code.py --check`. Agents MUST format only affected Python files when unrelated dirty work exists. Agents MUST NOT add Python comments or docstrings. Frontend checks use `npm --prefix ui run build` and `npm --prefix ui test`. Browser results MUST NOT establish remote or voice behaviour.
+
+Use `uv run gambit play --port 3030` after building the sibling chessboard and UI. The same process serves `/mcp`. Generated static assets MUST be built before packaging. Benchmarks MUST identify transport, cache state, workload, and sample distribution. Correctness MUST NOT be weakened to improve latency.

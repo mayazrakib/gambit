@@ -424,20 +424,21 @@ class GameAnalysisTests(unittest.TestCase,):
             "pv": [chess.Move.from_uci(move,) for move in ("e2e4", "e7e5", "g1f3", "e7e6")],
         }
 
-        with patch.object(
-            engine,
-            "analyze",
-            return_value=[line,],
+        with (
+            patch.object(
+                engine,
+                "analyze",
+                return_value=[line,],
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "illegal|terminal",
+            ),
         ):
-            result = service.analyze_positions(
+            service.analyze_positions(
                 [service.PositionAnalysisRequest(chess.STARTING_FEN,),],
                 engine,
-            )[0]
-
-        self.assertEqual(
-            result.principal_variations[0].moves_san,
-            ("e4", "e5", "Nf3"),
-        )
+            )
 
         with (
             patch.object(
@@ -447,7 +448,7 @@ class GameAnalysisTests(unittest.TestCase,):
             ),
             self.assertRaisesRegex(
                 RuntimeError,
-                "invalid root",
+                "illegal|terminal",
             ),
         ):
             service.analyze_positions(
@@ -958,18 +959,18 @@ class GameToolTests(unittest.IsolatedAsyncioTestCase,):
             engine,
         ):
             for name, arguments in (
-                ("parse_game", {"pgn": "1.e4 e5",}),
+                ("read_pgn", {"pgn": "1.e4 e5",}),
                 (
                     "analyze_game",
                     {"pgn": "1.e4 e5", "initial_nodes": 10, "critical_nodes": 10,},
                 ),
                 (
-                    "review_game",
-                    {"pgn": "1.e4 e5", "initial_nodes": 10, "critical_nodes": 10,},
+                    "analyze_game",
+                    {"pgn": "1.e4 e5", "initial_nodes": 10, "critical_nodes": 10, "should_review": False,},
                 ),
                 (
-                    "analyze_positions",
-                    {"positions": [{"fen": chess.STARTING_FEN, "nodes": 10,},],},
+                    "analyze_position",
+                    {"positions": [{"fen": chess.STARTING_FEN,},],},
                 ),
             ):
                 with self.subTest(tool=name,):
@@ -1004,13 +1005,13 @@ class GameToolTests(unittest.IsolatedAsyncioTestCase,):
                 await session.initialize()
                 tools = await session.list_tools()
 
-                self.assertTrue({"parse_game", "analyze_positions", "analyze_game", "review_game",}
+                self.assertTrue({"read_pgn", "analyze_position", "analyze_game",}
                     <= {tool.name for tool in tools.tools},)
 
                 result = cast(
                     CallToolResult,
                     await session.call_tool(
-                        "review_game",
+                        "analyze_game",
                         {
                             "pgn": "1.f3 e5 2.g4 Qh4# 0-1",
                             "initial_nodes": 1000,
@@ -1035,7 +1036,7 @@ class GameToolTests(unittest.IsolatedAsyncioTestCase,):
                 result = cast(
                     CallToolResult,
                     await session.call_tool(
-                        "parse_game",
+                        "read_pgn",
                         {"pgn": "1.e4 garbage",},
                     ),
                 )
@@ -1052,13 +1053,14 @@ class StockfishLifecycleTests(unittest.TestCase,):
         engine = StockfishClient()
         engine.output.put("info depth 1 multipv 1 score cp 10 pv e2e4 e7e5 invalid",)
         engine.output.put("bestmove e2e4",)
-        lines = engine.read_analysis(chess.Board(),)
 
-        self.assertEqual(
-            [move.uci() for move in lines[0]["pv"]],
-            ["e2e4", "e7e5",],
-        )
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "malformed principal variation",
+        ):
+            engine.read_analysis(chess.Board(),)
 
+        engine = StockfishClient()
         engine.output.put("bestmove e7e5",)
 
         with self.assertRaisesRegex(

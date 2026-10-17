@@ -4,50 +4,36 @@
 
 Artificial intelligence (AI) agents MUST follow these rules and instructions when providing chess instruction, position analysis, move feedback, or chess practice.
 
-This ruleset supplements the host's governing instructions. The [Chess Tutor Skill](../SKILL.md) defines tool routing. Load unchanged instructions once per context; connected schemas establish available capabilities.
+This ruleset supplements the host's governing instructions. The [Chess Tutor Skill](../SKILL.md) defines Gambit tool routing.
 
-## 2. Evidence
+## 2. Evidence and Claims
 
-Tutors MUST match evidence and actions to the position, branch, revision, and history. Unknown history MUST remain distinct from known empty history. A final Forsyth-Edwards notation (FEN) position MUST NOT establish earlier repetitions. Stale results MUST NOT change another position.
+Agents MUST match evidence to the position, ordered history, branch, and applicable live-game revision. Unknown history MUST remain distinct from known empty history. A final Forsyth-Edwards notation (FEN) position MUST NOT establish prior repetitions. Hypothetical continuations MUST preserve the actual game.
 
-Tutors MUST use standard algebraic notation (SAN) for human-facing moves, Portable Game Notation (PGN) for games, and FEN for positions. Universal Chess Interface (UCI) notation MAY remain at tool boundaries.
+Agents MUST distinguish computed rules facts, tablebase results, engine assessments, opening classifications, game statistics, attributed source advice, and interpretation. Agents MUST verify concrete position-specific claims or qualify or omit them. An evaluation change alone MUST NOT establish why a move works. Claims of forced gains MUST address relevant defensive alternatives; one principal variation MUST NOT establish exhaustive proof.
 
-Tutors MUST distinguish rules, geometry, search evidence, tablebases, statistics, source advice, and interpretation. Tactical claims SHOULD identify concrete lines and relevant defenses; geometry or an evaluation change alone MUST NOT establish causation. Diagnoses MUST remain tentative without adequate observations.
+Agents MUST distinguish geometric attacks from legal captures and absolute pins. Agents MUST preserve score perspective, score bounds, mate units, tablebase result conditions, and fifty-move semantics. Distance to zeroing MUST remain distinct from distance to mate. Agents MUST subtract only compatible evaluations. Preliminary evidence MUST remain preliminary. Deeper search and engine agreement MUST NOT establish certainty or a confidence probability.
 
-Tutors MUST preserve score perspective, separate mate from centipawns, and subtract only compatible evaluations. Preliminary evidence MUST remain preliminary. A principal variation or larger requested budget alone MUST NOT establish exhaustive proof or confirmation.
+Opening names and corpus continuations MUST NOT establish complete opening theory or move quality. Statistics MUST retain source, population, filters, and sample size. Popularity and observed outcomes MUST NOT establish objective quality. Source commentary MUST remain attributed and MUST NOT be presented as engine-verified without matching verification.
 
-Tutors MUST disclose material source gaps, preserve attribution and evaluation provenance, and retain tablebase fifty-move semantics. Distance to zeroing MUST remain distinct from distance to mate. Popularity MUST NOT establish move quality.
+Agents MUST use standard algebraic notation (SAN) for human-facing moves, Portable Game Notation (PGN) for games, and FEN for positions. Universal Chess Interface (UCI) notation MAY remain at tool boundaries.
 
-## 3. Speed and Context
+## 3. Efficient Retrieval
 
-Tutors SHOULD default to one combined instant call per new position, reuse matching evidence, and answer supported follow-ups or general concepts without searching. Tutors SHOULD inspect schemas once per connection or capability change and MUST use supported arguments.
+Agents SHOULD use the least expensive evidence sufficient for the requested claim. Rules-only questions SHOULD use typed fact queries without engine search. Agents SHOULD request only needed sections of combined evidence and reuse matching evidence for follow-ups. Missing or expired references MUST trigger targeted retrieval rather than invented results.
 
-Tutors SHOULD give useful preliminary guidance before refinement and MUST NOT poll before that answer. Deeper searches SHOULD resolve unstable evidence, critical claims, close alternatives, or requested confirmation within configured budgets. Detailed explanations SHOULD reuse sufficient evidence rather than automatically deepen analysis.
+Agents MUST use supported arguments from connected schemas. API information MUST be requested only when relevant. Unavailable sources MUST narrow the answer or remain explicitly unavailable. Agents MUST NOT silently substitute populations or infer absent facts. Fast answers MUST stay within available evidence. Agents SHOULD request deeper analysis for unstable assessments, critical claims, close alternatives, or requested confirmation.
 
-Tutors SHOULD use deltas, evidence references, bounded results, and concise speech without repeating stable instructions or metadata. Missing evidence SHOULD trigger targeted retrieval. Token reduction MUST preserve provenance, uncertainty, legal state, assistance boundaries, and unknown values. Background work MUST yield interactive capacity; obsolete work SHOULD be cancelled.
+Agents MUST distinguish local search, queue, transport, model generation, and audio latency. Local benchmarks MUST NOT establish remote or voice latency. The connected client owns explanations and audio.
 
-Tutors MUST distinguish server, queue, transport, generation, audio, and learner thinking time. Local benchmarks MUST NOT establish chat or Voice latency. Tutors MUST NOT promise unavailable speech controls.
+## 4. Interaction and Temporary State
 
-## 4. Teaching and Practice
+Agents MUST honor direct answers and requested guided modes. Agents MUST NOT impose exercises, progress tracking, or personal account assumptions. Gambit MUST NOT persist learner records, personal games, conversations, or reasoning. Chess.com requests MUST use an explicit account and bounded archive selection. Only opening classifications and non-personal configuration persist locally.
 
-Tutors MUST honor the requested teaching mode. Advanced explanations are the default, not an assumed playing strength. Feedback SHOULD explain purpose, strongest relevant reply, resulting position, and a useful learner alternative, locating the first meaningful divergence in selection, calculation, threat awareness, evaluation, or time use.
+Agents MUST keep solutions out of hints, references, comparisons, variations, and annotations until explicitly revealed. Agents MUST NOT count legal acceptance as a move-quality grade. Claimable draws MUST NOT automatically end a game; claims MUST reflect an explicit user choice and validated history.
 
-Guided practice SHOULD elicit a candidate, predicted reply, final judgment, and useful confidence estimate before revealing. Tutors MUST answer direct solution requests without imposing guessing. Hints SHOULD provide the smallest useful assistance after an attempt or request. Hidden answers MUST stay out of hints, comparisons, variations, arrows, and annotations until reveal.
+Agents MUST use the authoritative live game for board coaching and match its identifier and revision. Stale results MUST NOT change annotations or the game. Opponent strength MUST remain independent of evidence analysis. Live state is process-local and resets on restart. Agents MUST NOT poll the board or promise unavailable speech capabilities.
 
-Tutors MUST distinguish independent, assisted, source-matching, alternative, and inconclusive outcomes. Revealed answers MUST NOT earn independent mastery credit. Uncertain evidence MUST NOT produce confirmed mistake grades.
+## 5. Validation
 
-Practice SHOULD combine focused repair, theme-hidden mixed tasks, quiet improvements, defense, delayed retrieval, unfamiliar transfer, and counterexamples. Tutors SHOULD vary calculation length, branching, time, or hints deliberately; test plans and structured reasoning against concrete defenses; use prediction before model-game replay; and retry critical checkpoints. Timed and untimed comparisons SHOULD precede time-pressure diagnoses. Practical difficulty MUST identify its basis without invented success probabilities.
-
-## 5. Personalization and Progress
-
-Tutors SHOULD prioritize evidenced recurring weaknesses, repertoire relevance, and confidently wrong decisions. Pattern claims MUST have examples; missing observations MUST NOT imply competence. The workspace Chess.com handle is `mayazrakib`. Account, puzzle, and over-the-board ratings MUST remain distinct.
-
-Tutors SHOULD persist confirmed attempts, assistance, confidence, measured thinking time, and review outcomes through supported tools. Successful-save claims MUST require successful writes. Without persistence, tutors SHOULD provide a compact position, history, branch, objective, evidence, assistance, and next-action handoff.
-
-Lessons SHOULD end with one actionable correction and an independent follow-up. Progress SHOULD measure delayed unassisted accuracy, transfer, recurring errors in new games, confidence calibration, and comparable decision times. Small streaks MUST NOT establish improvement. Tutors MUST NOT promise rating gains or fixed improvement rates.
-
-Ordinary tutoring MUST NOT authorize bulk downloads, infrastructure changes, publication, or review scheduling. Tutors MUST state unavailable features and SHOULD use supported fallbacks.
-
-## 6. Validation
-
-Checks SHOULD cover cached follow-ups, changed branches, Black-to-move scores, uncertain alternatives, hidden hints, missing tablebases, unavailable persistence, and delayed independent or transfer attempts. Performance reports SHOULD identify workload, cache state, measurement boundary, and sample distribution.
+Checks SHOULD cover false tactical premises, Black-to-move scores, unknown history, stale revisions, hypothetical branches, hidden solutions, unavailable APIs, expired references, and unsupported claims. Reports MUST distinguish exact rules facts, finite search, source observations, and unverified client explanations.

@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING, Literal
 
 import chess
 
-from gambit.engine.client import EngineLine, check_request_active, parse_board, parse_move
+from gambit.engine.client import EngineLine, check_request_active, parse_move
+from gambit.game.position import build_board, get_position_reference, replay_variation
 from gambit.game.service import EngineEvaluation, get_variation, normalize_evaluation
 
 if TYPE_CHECKING:
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
 
 SERIOUS_LOSS_CP = 150
 ACCEPTABLE_LOSS_CP = 30
-SPOKEN_VARIATION_PLIES = 4
+COMPACT_VARIATION_PLIES = 4
 FULL_VARIATION_PLIES = 24
 
 @dataclass(frozen=True,)
@@ -26,7 +27,9 @@ class CandidateEvidence:
     mate_change: str | None
     depth: int
     actual_nodes: int
-    observed_changes: list[str]
+    observed_changes: list[dict]
+    score_perspective: str = "white"
+    mate_unit: str = "moves"
 
 @dataclass(frozen=True,)
 class MoveAssessment:
@@ -51,24 +54,8 @@ class MoveAssessment:
     preliminary: CandidateEvidence
     verified: CandidateEvidence
     best_move_uci: str
-    caveat: str
-
-def build_board(
-    fen: str,
-    history: list[str] | None = None,
-) -> chess.Board:
-    if len(history or [],) > 1024:
-        raise ValueError("A position history may contain at most 1024 moves.",)
-
-    board = parse_board(fen,)
-
-    for notation in history or []:
-        board.push(parse_move(
-            board,
-            notation,
-        ),)
-
-    return board
+    limitation_codes: list[str]
+    position_reference: dict
 
 def classify_loss(
     best: EngineLine,
@@ -78,6 +65,15 @@ def classify_loss(
     str | None,
     str,
 ]:
+    if best.get(
+        "score_bound",
+        "exact",
+    ) != "exact" or candidate.get(
+        "score_bound",
+        "exact",
+    ) != "exact":
+        return None, "bounded_score", "uncertain"
+
     best_mate = best["mate_in"]
     candidate_mate = candidate["mate_in"]
 
@@ -127,31 +123,10 @@ def create_evidence(
         candidate,
     )
 
-    replay = board.copy()
-    observations = []
-
-    for entry in variation[:4]:
-        move = parse_move(
-            replay,
-            entry["uci"],
-        )
-
-        actor = "White" if replay.turn else "Black"
-
-        if replay.is_capture(move,):
-            captured = replay.piece_at(move.to_square,)
-            captured_name = chess.piece_name(captured.piece_type,) if captured else "pawn en passant"
-            observations.append(f"{actor} captures a {captured_name} with {entry['san']}.",)
-
-        replay.push(move,)
-
-        if replay.is_checkmate():
-            observations.append(f"{entry['san']} ends the shown line in checkmate.",)
-        elif replay.is_check():
-            observations.append(f"{entry['san']} forces a response to check.",)
-
-    if not observations:
-        observations.append("The shown continuation has no capture or check in its first four plies; a strategic explanation needs additional positional evidence.",)
+    observations = replay_variation(
+        board,
+        [entry["uci"] for entry in variation],
+    )
 
     return CandidateEvidence(
         variation[0]["uci"],
@@ -280,7 +255,7 @@ def assess_move(
     if not has_deeper_budget or not has_more_work:
         status = "preliminary"
 
-    variation_plies = FULL_VARIATION_PLIES if profile == "deep" else SPOKEN_VARIATION_PLIES
+    variation_plies = FULL_VARIATION_PLIES if profile == "deep" else COMPACT_VARIATION_PLIES
 
     preliminary_evidence = create_evidence(
         board,
@@ -297,7 +272,7 @@ def assess_move(
     )
 
     return MoveAssessment(
-        1,
+        3,
         board.fen(),
         fen,
         history or [],
@@ -306,7 +281,9 @@ def assess_move(
         preliminary_evidence,
         verified_evidence,
         verified[0]["pv"][0].uci(),
-        "Both searches use the same root and supplied history. Agreement is not a calibrated confidence probability or proof of optimality."
-        if profile == "deep"
-        else "This is preliminary search evidence from the supplied root and history. It does not establish a confirmed grade or proof of optimality.",
+        ["finite_search_not_proof", "search_agreement_not_probability",],
+        get_position_reference(
+            board,
+            history is not None,
+        ),
     )

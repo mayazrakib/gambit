@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="theme-color" content="#ffffff">
+        <meta name="description" content="Local chess board, Stockfish opponent, and Gambit analysis.">
+        <script>
+            try { localStorage.removeItem("mayaz_theme"); } catch {}
+            document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        </script>
+        <title>Gambit</title>
+        <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+    </head>
+    <body>
+        <div id="app"></div>
+        <script type="module" src="/src/main.ts"></script>
+    </body>
+</html>
