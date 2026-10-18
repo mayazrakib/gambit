@@ -2,7 +2,6 @@ export async function request_json<Result>(
     path: string,
     body?: object,
     signal?: AbortSignal,
-
 ): Promise<Result> {
     const response = await fetch(
         `/api/live/${path}`,
@@ -12,8 +11,8 @@ export async function request_json<Result>(
             body: body ? JSON.stringify(body) : undefined,
             signal: signal ?? AbortSignal.timeout(20000),
         },
-
     );
+
     const result = await response.json();
 
     if (!response.ok) {

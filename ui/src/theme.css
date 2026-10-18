@@ -56,7 +56,21 @@
     line-height: 1;
 }
 
-.theme_toggle svg { width: 16px; height: 16px; stroke-width: 1.6; }
-chess-board { --chessboard-material-color: var(--foreground); --chessboard-material-muted: var(--muted); }
-[data-theme="dark"] .status_dot { background: #83b68c; }
-[data-theme="dark"] .is_offline { background: #d8b471; }
+.theme_toggle svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.6;
+}
+
+chess-board {
+    --chessboard-material-color: var(--foreground);
+    --chessboard-material-muted: var(--muted);
+}
+
+[data-theme="dark"] .status_dot {
+    background: #83b68c;
+}
+
+[data-theme="dark"] .is_offline {
+    background: #d8b471;
+}

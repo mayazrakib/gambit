@@ -1,8 +1,8 @@
-import type { ChessboardElement } from "@mayazrakib/chessboard";
+import type { ChessboardElement, } from "@mayazrakib/chessboard";
 
-import type { LiveGame } from "./types";
+import type { LiveGame, } from "./types";
 
-import { get_element } from "./api";
+import { get_element, } from "./api";
 
 type WorkspaceActions = {
     get_game: () => LiveGame | null;
@@ -22,38 +22,49 @@ export function bind_controls(
         "click",
         actions.undo,
     );
+
     get_element("#claim_draw").addEventListener(
         "click",
         actions.claim_draw,
     );
+
     get_element("#clear").addEventListener(
         "click",
         actions.clear,
     );
+
     get_element("#flip").addEventListener(
         "click",
         () => board.flip(),
     );
+
     get_element("#hint").addEventListener(
         "click",
         () => void actions.teach("hint"),
     );
+
     get_element("#explain").addEventListener(
         "click",
         () => void actions.teach("explain"),
     );
+
     get_element("#cancel_teaching").addEventListener(
         "click",
         actions.cancel,
     );
+
     get_element("#retry_opponent").addEventListener(
         "click",
         actions.retry,
     );
+
     get_element("#dismiss_error").addEventListener(
         "click",
-        () => { get_element("#error_banner").hidden = true; },
+        () => {
+            get_element("#error_banner").hidden = true;
+        },
     );
+
     get_element("#export").addEventListener(
         "click",
         () => {
@@ -67,6 +78,7 @@ export function bind_controls(
                 [game.pgn],
                 { type: "application/x-chess-pgn" },
             ));
+
             const anchor = document.createElement("a");
             anchor.href = url;
             anchor.download = `gambit-${game.game_id}.pgn`;
@@ -74,6 +86,7 @@ export function bind_controls(
             URL.revokeObjectURL(url);
         },
     );
+
     document.addEventListener(
         "keydown",
         (event) => {

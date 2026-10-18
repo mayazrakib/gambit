@@ -1,4 +1,4 @@
-import { get_element } from "./api";
+import { get_element, } from "./api";
 
 type Theme = "light" | "dark";
 
@@ -11,10 +11,12 @@ function apply_theme(theme: Theme): void {
     const label = `Switch to ${theme === "dark" ? "light" : "dark"} mode`;
     button.innerHTML = theme === "dark" ? SUN_ICON : MOON_ICON;
     button.title = label;
+
     button.setAttribute(
         "aria-label",
         label,
     );
+
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
         "content",
         getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
@@ -23,13 +25,12 @@ function apply_theme(theme: Theme): void {
 
 export function bind_theme(): void {
     apply_theme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+
     get_element("#theme_toggle").addEventListener(
         "click",
         () => {
             const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
             apply_theme(theme);
-
-
         },
     );
 }

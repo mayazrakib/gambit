@@ -1,4 +1,4 @@
-import type { BoardMark } from "@mayazrakib/chessboard";
+import type { BoardMark, } from "@mayazrakib/chessboard";
 
 export type OpponentSettings = {
     player_color: "white" | "black";
@@ -21,7 +21,14 @@ export type LiveGame = {
     fen: string;
     root_fen: string;
     history: string[];
-    moves: { san: string; uci: string; number: number; color: "white" | "black" }[];
+
+    moves: {
+        san: string;
+        uci: string;
+        number: number;
+        color: "white" | "black"
+    }[];
+
     pgn: string;
     side_to_move: "white" | "black";
     player_color: "white" | "black";
@@ -33,10 +40,27 @@ export type LiveGame = {
     termination: string | null;
     settings: OpponentSettings;
     annotations: BoardMark[];
+
     teaching: {
         schema_version: 3;
-        facts: { variation: { move_san: string; is_capture: boolean; facts: { is_check: boolean; is_checkmate: boolean } }[] } | null;
-        evaluation: { centipawns: number | null; mate_in: number | null } | null;
+
+        facts: {
+            variation: {
+                move_san: string;
+                is_capture: boolean;
+
+                facts: {
+                    is_check: boolean;
+                    is_checkmate: boolean
+                }
+            }[]
+        } | null;
+
+        evaluation: {
+            centipawns: number | null;
+            mate_in: number | null
+        } | null;
+
         evidence_status: string | null;
         intent: string;
         profile: string;
@@ -48,9 +72,13 @@ export type LiveGame = {
 
 export type Capabilities = {
     name: string;
+
     options: Record<
         string,
-        { min: number | null; max: number | null; default: number | boolean }
-
+        {
+            min: number | null;
+            max: number | null;
+            default: number | boolean
+        }
     >;
 };

@@ -1,13 +1,12 @@
-import type { Capabilities, LiveGame, OpponentSettings } from "./types";
+import type { Capabilities, LiveGame, OpponentSettings, } from "./types";
 
-import { get_element, request_json } from "./api";
+import { get_element, request_json, } from "./api";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 export function bind_setup(
     on_create: (game: LiveGame) => void,
     get_game: () => LiveGame | null,
-
 ): void {
     const dialog = get_element<HTMLDialogElement>("#setup_dialog");
     const form = get_element<HTMLFormElement>("#setup_form");
@@ -20,7 +19,6 @@ export function bind_setup(
                 get_element("#setup_note").textContent = get_game() ? "Replaces the active game. Export PGN to retain it." : "Opponent settings are independent of tutor analysis.";
                 dialog.showModal();
             },
-
         );
     }
 
@@ -28,7 +26,6 @@ export function bind_setup(
         get_element(selector).addEventListener(
             "click",
             () => dialog.close(),
-
         );
     }
 
@@ -37,18 +34,18 @@ export function bind_setup(
         () => {
             get_element("#skill_value").textContent = `${get_element<HTMLInputElement>("#skill_level").value} / 20`;
         },
-
     );
+
     get_element("#strength_mode").addEventListener(
         "change",
         update_fields,
-
     );
+
     get_element("#budget_mode").addEventListener(
         "change",
         update_fields,
-
     );
+
     form.addEventListener(
         "submit",
         async (event) => {
@@ -62,11 +59,15 @@ export function bind_setup(
                 const values = new FormData(form);
                 const settings = Object.fromEntries([...values].map(([key, value]) => [key, ["player_color", "strength_mode", "budget_mode"].includes(key) ? value : Number(value)])) as OpponentSettings;
                 const root_fen = get_element<HTMLTextAreaElement>("#root_fen").value.trim() || STARTING_FEN;
+
                 const result = await request_json<{ game: LiveGame }>(
                     "new",
-                    { settings, root_fen },
-
+                    {
+                        settings,
+                        root_fen
+                    },
                 );
+
                 dialog.close();
                 on_create(result.game);
             } catch (error) {
@@ -76,7 +77,6 @@ export function bind_setup(
                 button.textContent = "Start game";
             }
         },
-
     );
 }
 
@@ -98,7 +98,6 @@ export function apply_capabilities(capabilities: Capabilities): void {
             input.min = String(Math.max(
                 Number(input.min),
                 bounds.min,
-
             ));
         }
 
@@ -106,7 +105,6 @@ export function apply_capabilities(capabilities: Capabilities): void {
             input.max = String(Math.min(
                 Number(input.max),
                 bounds.max,
-
             ));
         }
 
@@ -115,9 +113,7 @@ export function apply_capabilities(capabilities: Capabilities): void {
             Math.min(
                 Number(input.max),
                 Number(input.value),
-
             ),
-
         ));
     }
 }

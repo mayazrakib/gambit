@@ -6,7 +6,10 @@
         <meta name="theme-color" content="#ffffff">
         <meta name="description" content="Local chess board, Stockfish opponent, and Gambit analysis.">
         <script>
-            try { localStorage.removeItem("mayaz_theme"); } catch {}
+            try {
+                localStorage.removeItem("mayaz_theme");
+            } catch {}
+
             document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         </script>
         <title>Gambit</title>

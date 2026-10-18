@@ -1,14 +1,14 @@
-import { type ChessboardElement, type MoveRequest } from "@mayazrakib/chessboard";
+import { type ChessboardElement, type MoveRequest, } from "@mayazrakib/chessboard";
 import "@mayazrakib/chessboard";
 
-import type { Capabilities, LiveGame } from "./types";
+import type { Capabilities, LiveGame, } from "./types";
 
-import { get_element, request_json } from "./api";
-import { bind_controls } from "./controls";
-import { mark_pending_move, render_game } from "./render";
-import { apply_capabilities, bind_setup } from "./setup";
-import { WORKSPACE_TEMPLATE } from "./template";
-import { bind_theme } from "./theme";
+import { get_element, request_json, } from "./api";
+import { bind_controls, } from "./controls";
+import { mark_pending_move, render_game, } from "./render";
+import { apply_capabilities, bind_setup, } from "./setup";
+import { WORKSPACE_TEMPLATE, } from "./template";
+import { bind_theme, } from "./theme";
 import "./style.css";
 
 get_element("#app").innerHTML = WORKSPACE_TEMPLATE;
@@ -77,7 +77,11 @@ async function mutate(
     try {
         const result = await request_json<{ game: LiveGame }>(
             action,
-            { game_id: captured.game_id, expected_revision: captured.revision, ...extra },
+            {
+                game_id: captured.game_id,
+                expected_revision: captured.revision,
+                ...extra
+            },
         );
 
         if (game?.game_id === captured.game_id) {
@@ -121,7 +125,10 @@ async function play_opponent(): Promise<void> {
     try {
         const result = await request_json<{ game: LiveGame }>(
             "opponent",
-            { game_id: captured.game_id, expected_revision: captured.revision },
+            {
+                game_id: captured.game_id,
+                expected_revision: captured.revision
+            },
         );
 
         if (game?.game_id === captured.game_id) {
@@ -158,17 +165,25 @@ async function teach(intent: string): Promise<void> {
     teaching_request = controller;
     const captured = game;
     get_element("#teaching_label").textContent = "Analyzing…";
+
     get_element(".tutor_card").setAttribute(
         "aria-busy",
         "true",
     );
+
     get_element("#cancel_teaching").hidden = false;
 
     try {
         const profile = get_element<HTMLSelectElement>("#analysis_profile").value;
+
         const result = await request_json<{ game: LiveGame }>(
             "teach",
-            { game_id: captured.game_id, expected_revision: captured.revision, intent, profile },
+            {
+                game_id: captured.game_id,
+                expected_revision: captured.revision,
+                intent,
+                profile
+            },
             AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]),
         );
 
@@ -209,54 +224,101 @@ async function handle_move(request: MoveRequest): Promise<void> {
     get_element("#position_status").textContent = "Stockfish to move.";
     get_element("#teaching_label").textContent = "Position changed";
     get_element("#teaching_message").textContent = "No analysis for this position.";
+
     await mutate(
         "move",
         { move: `${request.input.from}${request.input.to}${request.input.promotion ?? ""}` },
     );
+
     await play_opponent();
 }
 
 async function initialize(): Promise<void> {
     await board.when_ready();
-    board.set_options({ theme: "sage", is_muted: true, move_mode: "controlled", event_detail: "compact", interactive: false, animation_duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 120, interaction: { can_premove: false, keyboard_shortcuts: { undo: [], redo: [] } }, annotations: { clear_on_left_click: "user" } });
+
+    board.set_options({
+        theme: "sage",
+        is_muted: true,
+        move_mode: "controlled",
+        event_detail: "compact",
+        interactive: false,
+        animation_duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 120,
+
+        interaction: {
+            can_premove: false,
+
+            keyboard_shortcuts: {
+                undo: [],
+                redo: []
+            }
+        },
+
+        annotations: { clear_on_left_click: "user" }
+    });
+
     bind_setup(
-        (created) => { is_following = true; accept_game(created); },
+        (created) => {
+            is_following = true;
+            accept_game(created);
+        },
         () => game,
     );
+
     bind_controls(
         board,
         {
             get_game: () => game,
-            undo: () => { is_following = false; void mutate("undo"); },
+
+            undo: () => {
+                is_following = false;
+                void mutate("undo");
+            },
+
             clear: () => void mutate("clear"),
-            claim_draw: () => { is_following = false; void mutate("claim_draw"); },
+
+            claim_draw: () => {
+                is_following = false;
+                void mutate("claim_draw");
+            },
+
             teach,
             cancel: () => teaching_request?.abort(),
-            retry: () => { attempted_opponent_turns.clear(); void play_opponent(); },
+
+            retry: () => {
+                attempted_opponent_turns.clear();
+                void play_opponent();
+            },
         },
     );
+
     board.addEventListener(
         "chessboard:move_request",
         (event) => void handle_move(event.detail),
     );
+
     get_element("#mcp_address").textContent = location.hostname.endsWith(".ts.net") ? "Use your existing Gambit MCP connection." : `${location.origin}/mcp`;
     const initial_game = refresh_game();
     const capabilities = request_json<Capabilities>("capabilities").then(apply_capabilities).catch(show_error);
     const events = new EventSource("/api/events");
+
     events.onopen = () => {
         get_element("#connection_text").textContent = "Board connected";
         get_element("#connection_dot").classList.remove("is_offline");
     };
+
     events.onmessage = (event) => accept_game(JSON.parse(event.data) as LiveGame);
+
     events.onerror = () => {
         get_element("#connection_text").textContent = "Reconnecting…";
         get_element("#connection_dot").classList.add("is_offline");
     };
+
     window.addEventListener(
         "pagehide",
         () => events.close(),
         { once: true },
     );
+
     await Promise.all([initial_game, capabilities]);
 }
 

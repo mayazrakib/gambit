@@ -1,8 +1,8 @@
-import type { ChessboardElement } from "@mayazrakib/chessboard";
+import type { ChessboardElement, } from "@mayazrakib/chessboard";
 
-import type { LiveGame } from "./types";
+import type { LiveGame, } from "./types";
 
-import { get_element } from "./api";
+import { get_element, } from "./api";
 
 type RenderState = {
     position: string;
@@ -21,6 +21,7 @@ export function mark_pending_move(board: ChessboardElement): void {
         [],
         "gambit",
     );
+
     board.set_options({ interactive: false });
     const state = RENDER_STATES.get(board);
 
@@ -39,7 +40,6 @@ export function get_strength_label(game: LiveGame): string {
 export function render_game(
     game: LiveGame,
     board: ChessboardElement,
-
 ): void {
     get_element("#board_empty").hidden = true;
 
@@ -48,10 +48,10 @@ export function render_game(
 
     if (board.get_position() !== game.fen || board.get_uci_moves().length !== game.history.length || previous?.position.split(":")[0] !== game.game_id) {
         const current = board.get_uci_moves();
+
         const can_advance = game.history.length === current.length + 1 && current.every((
             move,
             index,
-
         ) => move === game.history[index]);
 
         if (can_advance) {
@@ -73,22 +73,32 @@ export function render_game(
     const is_player_turn = game.side_to_move === game.player_color && !game.is_game_over;
 
     if (previous?.interactive !== is_player_turn || previous.playable_color !== game.player_color) {
-        board.set_options({ interactive: is_player_turn, playable_color: game.player_color === "white" ? "w" : "b" });
+        board.set_options({
+            interactive: is_player_turn,
+            playable_color: game.player_color === "white" ? "w" : "b"
+        });
     }
 
     RENDER_STATES.set(
         board,
-        { position: position_key, annotations: annotation_key, interactive: is_player_turn, playable_color: game.player_color },
+        {
+            position: position_key,
+            annotations: annotation_key,
+            interactive: is_player_turn,
+            playable_color: game.player_color
+        },
     );
+
     get_element("#opponent_summary").textContent = `${get_strength_label(game)} · ${game.settings.think_time_ms / 1000}s time cap`;
     get_element("#player_color").textContent = `${game.player_color === "white" ? "White" : "Black"} pieces`;
     get_element("#player_status").hidden = !is_player_turn;
     get_element("#engine_status").textContent = game.is_game_over ? "Game complete" : is_player_turn ? "Waiting" : "Thinking…";
+
     get_element("#engine_status").classList.toggle(
         "is_thinking",
         !is_player_turn && !game.is_game_over,
-
     );
+
     get_element("#position_status").textContent = game.is_game_over ? `${game.result} · ${game.termination}` : `${is_player_turn ? "Your turn." : "Stockfish to move."}${game.is_check ? " Check." : ""}`;
     get_element("#position_fen").textContent = game.fen;
     get_element("#move_counter").textContent = `Move ${Number(game.fen.split(" ")[5])} · ${game.side_to_move} to play`;
@@ -136,21 +146,22 @@ function render_history(game: LiveGame): void {
             number.textContent = `${move.number}.`;
             const white = document.createElement("span");
             const black = document.createElement("span");
+
             row.append(
                 number,
                 white,
                 black,
-
             );
+
             list.append(row);
         }
 
         const cell = row.children[move.color === "white" ? 1 : 2] as HTMLElement;
         cell.textContent = move.san;
+
         cell.classList.toggle(
             "latest_move",
             index === game.moves.length - 1,
-
         );
     }
 
