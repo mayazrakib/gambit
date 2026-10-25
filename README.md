@@ -1,6 +1,12 @@
 # Gambit
 
-Gambit is an MCP server for validated chess facts, local Stockfish analysis, and attributed chess information. The connected AI writes explanations and supplies audio. Gambit distinguishes computed facts, finite engine searches, tablebase results, source commentary, and observed game statistics. It cannot guarantee that an AI's explanation is correct.
+Gambit is an MCP server for validated chess facts, engine analysis, and attributed information. Analysis runs locally with Stockfish. The connected AI writes explanations and supplies audio. Gambit distinguishes computed facts, finite engine searches, tablebase results, source commentary, and observed game statistics. It cannot guarantee that an AI's explanation is correct.
+
+## Learning history and persistence
+
+Gambit 0.3 does not provide persistent learning history, learner profiles, progress tracking, or review scheduling. Active games, move history, analysis evidence, jobs, and API caches are temporary and process-local. Restart clears them. Persistent data is limited to opening classifications, their index and metadata, and non-personal configuration. Any conversation history retained by a connected AI host is separate from Gambit.
+
+Older project summaries and third-party descriptions may describe learner tracking or persistent history from earlier versions. Those claims do not describe Gambit 0.3. Use this README and the server's `get_capabilities` response to check current capabilities and retention. The migration section below lists the removed interfaces.
 
 ## Install and connect
 
