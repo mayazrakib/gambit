@@ -36,7 +36,7 @@ module-name = "gambit"
 module-root = "src"
 
 [tool.pytest.ini_options]
-testpaths = ["test"]
+testpaths = ["test", "tests/perf"]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
 

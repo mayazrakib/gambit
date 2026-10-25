@@ -544,7 +544,7 @@ def main() -> None:
     root = arguments.root.resolve()
     failures = []
 
-    for directory in ("src", "test", "scripts"):
+    for directory in ("src", "test", "tests", "scripts"):
         for path in sorted((root / directory).rglob("*.py",),):
             source = path.read_text()
             formatted = format_source(source,)

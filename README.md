@@ -69,7 +69,7 @@ Preview recognized obsolete artifacts under `GAMBIT_RUNTIME_DIRECTORY` with `uv 
 
 ## Development
 
-Run `uv run pytest`, `uv run ruff check src test scripts`, `uv run python scripts/format_code.py --check`, and `uv run python scripts/generate_tutor_skill.py --check`. Frontend validation uses `npm --prefix ui run build` and `npm --prefix ui test`. API tests use deterministic fixtures; live provider smoke checks are separate. Run `uv run python scripts/benchmark_mcp.py` for local MCP latency and response-size measurements. These exclude model generation and audio.
+Run `uv run pytest`, `uv run ruff check src test scripts`, `uv run python scripts/format_code.py --check`, and `uv run python scripts/generate_tutor_skill.py --check`. Frontend validation uses `npm --prefix ui run build` and `npm --prefix ui test`. API tests use deterministic fixtures; live provider smoke checks are separate. Run `uv run python tests/perf/benchmark_mcp.py` for local MCP latency and response-size measurements. These exclude model generation and audio.
 
 ## License
 
