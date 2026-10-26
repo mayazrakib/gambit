@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from gambit.infrastructure import configuration
-from scripts.install_services import render_service
+from tools.scripts.install_services import render_service
 
 def test_dotenv_is_package_local_and_preserves_environment(
     tmp_path: Path,

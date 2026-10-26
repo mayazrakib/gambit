@@ -1,0 +1,26 @@
+name: Security
+on:
+    push:
+    pull_request:
+    schedule:
+        - cron: '0 22 * * 0'
+permissions:
+    contents: read
+jobs:
+    security:
+        name: Dependency Security
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+            - name: Scan First-Party Secrets
+              run: GOTOOLCHAIN=go1.24.11 go run github.com/zricethezav/gitleaks/v8@v8.30.1 dir --redact --no-banner .
+            - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+              with:
+                  version: '0.12.10'
+                  python-version: '3.14.7'
+            - name: Export Locked Dependencies
+              run: |
+                  mkdir -p build/security
+                  uv export --locked --all-extras --all-groups --no-emit-local --no-hashes --output-file build/security/requirements.txt
+            - name: Audit Python Dependencies
+              run: uvx pip-audit==2.10.1 --no-deps --disable-pip --requirement build/security/requirements.txt

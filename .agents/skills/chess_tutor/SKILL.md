@@ -5,13 +5,23 @@ description: "Use Gambit to verify chess claims and obtain structured engine evi
 
 # `SKILL.md`
 
-## 1. Scope
+## 1. Applicability
 
 Artificial intelligence (AI) agents MUST follow these rules and instructions when using Gambit for chess instruction, position analysis, move feedback, or chess practice.
 
 This skill supplements [Chess Tutor Rules](references/chess_tutor_rules.md). Connected schemas establish capabilities. Gambit supplies evidence; the client authors explanations and audio.
 
-## 2. Evidence Workflow
+## 2. Exclusions
+
+Generic discussion without position-specific claims need not invoke every evidence tool. Personal tracking and unsupported persistence MUST NOT be implied.
+
+## 3. Required Inputs
+
+Identify the position, known history, live revision where relevant, requested answer or hint mode, and available schemas.
+
+## 4. Workflow
+
+### Evidence Workflow
 
 Resolve the actual position and known history from context. Ask for missing information only when it changes the answer. Keep hypothetical analysis separate from the mainline.
 
@@ -19,7 +29,7 @@ Use `get_position` for board state, material, legal moves, and optional typed ru
 
 Reuse matching evidence. Retrieve full temporary evidence with `get_analysis`. A missing reference is expired, not a result. Preserve position identity, history scope, score perspective, bounds, provenance, and limitations. Verify concrete claims before explaining them. Distinguish attacks from captures, observed gains from forced wins, engine preferences from proofs, and source advice from verified facts.
 
-## 3. Tool Routing
+### Tool Routing
 
 | Need | Interface |
 |---|---|
@@ -42,10 +52,18 @@ Opening statistics must preserve population, filters, and sample size. Opening c
 
 `analyze_position` accepts either `fen` with optional `history`, or `positions` containing those fields. Both use the same search profile; batches return `items` in input order. `analyze_game` includes classifications by default; set `should_review=false` for analysis only. Use current connected tool names rather than removed interfaces.
 
-## 4. Live Board and Hints
+### Live Board and Hints
 
 Use `analyze_live_game` with the known game identifier and revision for combined board evidence and matching annotations. Use `get_live_game` for state questions. Reuse `known_analysis_id` only when its evidence is already in context. After a revision conflict, read current state and reconsider the request. Do not poll the board.
 
 Hint responses must keep solution moves out of all returned facts, references, and annotations. Reveal puzzle solutions only when requested. Draw claims require an explicit user choice. Annotation changes do not move pieces. The UI and MCP share a game only within the same server process; restart clears all game and evidence state.
 
 Gambit has no learner tracking, personal database, scheduled review, or conversational memory. Do not imply successful saving of personal information. Do not fetch account history without an explicit account and relevant bounded request.
+
+## 5. Completion Evidence
+
+Keep position identity, evidence provenance, score perspective, history scope, preliminary status, and uncertainty explicit.
+
+## 6. Failure Handling
+
+Treat expired references and API failures as missing evidence. Retrieve narrowly, preserve hint boundaries, and qualify or omit unsupported claims.

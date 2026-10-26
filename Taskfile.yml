@@ -1,0 +1,23 @@
+version: '3'
+
+tasks:
+    default:
+        desc: Display available tasks.
+        cmds:
+            - task --list
+    help:
+        desc: Describe available project tasks.
+        cmds:
+            - task --list
+    init:
+        desc: Initialize the development environment.
+        cmds:
+            - "uv sync --locked --extra vision"
+    test:
+        desc: Execute automated tests.
+        cmds:
+            - "uv run --locked --extra vision pytest"
+    build:
+        desc: Build project artifacts.
+        cmds:
+            - "uv build --out-dir build/packages"

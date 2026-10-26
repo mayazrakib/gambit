@@ -12,7 +12,7 @@ const RUNTIME_DIRECTORY = mkdtempSync(join(
 const PORT = 3037;
 
 export default defineConfig({
-    testDir: "./test",
+    testDir: "./tests",
     fullyParallel: false,
     workers: 1,
     timeout: 30000,

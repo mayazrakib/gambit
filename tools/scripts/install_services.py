@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PACKAGE_DIRECTORY = Path(__file__,).resolve().parents[1]
+PACKAGE_DIRECTORY = Path(__file__,).resolve().parents[2]
 SERVICE_NAMES = ("gambit.service", "gambit_tunnel.service",)
 
 def escape_unit_path(path: str,) -> str:

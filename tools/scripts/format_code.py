@@ -7,7 +7,7 @@ from pathlib import Path
 import libcst
 from libcst.metadata import PositionProvider
 
-DEFAULT_ROOT = Path(__file__,).resolve().parents[1]
+DEFAULT_ROOT = Path(__file__,).resolve().parents[2]
 CONTROL_TYPES = (libcst.If, libcst.For, libcst.While, libcst.Try, libcst.With, libcst.Match)
 
 def get_comments(source: str,) -> list[str]:
@@ -544,7 +544,7 @@ def main() -> None:
     root = arguments.root.resolve()
     failures = []
 
-    for directory in ("src", "test", "tests", "scripts"):
+    for directory in ("src", "tests", "tools/scripts"):
         for path in sorted((root / directory).rglob("*.py",),):
             source = path.read_text()
             formatted = format_source(source,)

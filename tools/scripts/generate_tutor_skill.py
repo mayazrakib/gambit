@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-REPOSITORY_ROOT = Path(__file__,).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__,).resolve().parents[2]
 DEFAULT_AGENTS_ROOT = REPOSITORY_ROOT.parents[1] / 'agents'
 
 def render_skill(agents_root: Path,) -> dict[

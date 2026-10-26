@@ -2,7 +2,7 @@ import ast
 
 import pytest
 
-from scripts.format_code import format_source, get_comments
+from tools.scripts.format_code import format_source, get_comments
 
 @pytest.mark.parametrize(
     "source",
