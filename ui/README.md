@@ -5,34 +5,37 @@
 ![Languages](https://img.shields.io/badge/Languages-TypeScript-737373?style=flat-square)
 ![Frameworks](https://img.shields.io/badge/Frameworks-Vite%2C%20Chessboard-737373?style=flat-square)
 ![Compatibility](https://img.shields.io/badge/Compatibility-Browser%20targets%3B%20not%20verified-737373?style=flat-square)
-![Build](https://img.shields.io/badge/Build-Not%20run%20remotely-737373?style=flat-square)
+![Build](https://img.shields.io/badge/Build-Not%20verified-737373?style=flat-square)
 ![Tests](https://img.shields.io/badge/Tests-8%20Chromium%20passing-737373?style=flat-square)
 ![Vulnerabilities](https://img.shields.io/badge/Vulnerabilities-0%20known%20dependency%20findings-737373?style=flat-square)
 
 ## 1. Introduction
 
-Gambit's browser workspace presents temporary local chess games and analysis.
+`gambit-workspace` is Gambit's browser workspace. It presents temporary local chess games and analysis.
 
 ## 2. Usage
 
-Build sibling `../../chessboard`, then run `npm ci` and `npm run build`. From the Gambit root, run `uv run gambit play --port 3030`.
+Build the sibling `../../chessboard` checkout first. Then, from this directory, run `npm ci` and `npm run build`. Start the workspace from the Gambit root with `uv run gambit play --port 3030`. `npm test` runs the browser tests.
 
 ## 3. Features
 
-Interactive play, hints, annotations, and revision-aware local analysis. Restarting the backend clears games and evidence.
+- Interactive play with hints and annotations.
+- Revision-aware local analysis.
+
+Restarting the backend clears games and evidence.
 
 ## 4. Architecture
 
-`src/` consumes protected local HTTP routes and sibling Chessboard events. Vite packages browser assets into `../src/gambit/web/assets` for Python distribution.
+`src/` consumes protected local HTTP routes and sibling Chessboard events. Vite packages the browser assets into `../src/gambit/web/assets` for the Python distribution.
 
 ## 5. Dependencies
 
 | Dependency | Version | Use |
 |---|---|---|
-| `@mayazrakib/chessboard` | `file:../../chessboard` | dependencies |
-| `@playwright/test` | `1.64.1` | devDependencies |
-| `typescript` | `5.9.3` | devDependencies |
-| `vite` | `8.3.4` | devDependencies |
+| `@mayazrakib/chessboard` | Local link to `file:../../chessboard` | Runtime: interactive board |
+| `@playwright/test` | 1.64.1 | Development: browser tests |
+| `typescript` | 5.9.3 | Development: type checks |
+| `vite` | 8.3.4 | Development: bundling |
 
 ## 6. Roadmap
 
