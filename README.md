@@ -1,5 +1,3 @@
-# `gambit`
-
 ![Version](https://img.shields.io/badge/Version-0.3.0-737373?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-737373?style=flat-square)
 ![Languages](https://img.shields.io/badge/Languages-Python%2C%20TypeScript-737373?style=flat-square)
@@ -25,7 +23,7 @@ uv run gambit
 
 `.env.example` documents the optional settings. Keep real credentials private. `showcase/configuration.toml` shows TOML configuration, and `uv run gambit serve --transport streamable-http --port 3025` serves MCP over HTTP.
 
-### Playing Workspace
+### 2.1. Playing Workspace
 
 Build the sibling `../chessboard` checkout first. Then build the interface and start the workspace:
 
@@ -53,15 +51,15 @@ Only opening classifications and non-personal configuration persist. Games, evid
 
 HTTP binds to loopback and validates the peer, host, origin, request type, and size. `GAMBIT_UI_ORIGIN` can allow one exact HTTPS `.ts.net` origin through loopback. Forwarded headers never replace the peer.
 
-### Conventions
+### 4.1. Conventions
 
 - Never persist personal identifiers or response bodies in logs.
 - Preserve the existing remote MCP connection.
 - Don't add Python comments or docstrings.
 
-### Verification
+### 4.2. Verification
 
-Backend checks use `uv run --locked --extra vision pytest`. Explicit style checks use `uv run ruff check src tests tools/scripts` and `uv run python tools/scripts/format_code.py --check`. `tools/scripts/generate_tutor_skill.py --check` validates the portable `.agents/skills/chess_tutor/` output against the authoritative Agents sources.
+Backend checks use `uv run --locked --extra vision pytest`. Explicit style checks use `uv run ruff check src tests tools/scripts` and `uv run python tools/scripts/format_code.py --check`. `tools/scripts/generate_tutor_skill.py --check` validates the portable `.ai/skills/chess/` output against the authoritative Agents sources.
 
 ## 5. Dependencies
 

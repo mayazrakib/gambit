@@ -8,33 +8,26 @@ def render_skill(agents_root: Path,) -> dict[
     str,
     str,
 ]:
-    skill = (agents_root / 'skills' / 'CHESS_TUTOR_SKILL.md').read_text()
-    rules = (agents_root / 'rules' / 'CHESS_TUTOR_RULES.md').read_text()
+    skill = (agents_root / 'skills' / 'knowledge' / 'chess' / 'SKILL.md').read_text()
+    rules = (agents_root / 'rules' / 'knowledge' / 'CHESS_RULES.md').read_text()
 
     skill = skill.replace(
-        'name: chess-tutor',
-        'name: chess_tutor',
-        1,
+        '[Chess Rules](../../../rules/knowledge/CHESS_RULES.md) and [General Rules](../../../rules/GENERAL_RULES.md)',
+        '[Chess Rules](references/chess_rules.md)',
     ).replace(
-        '# `CHESS_TUTOR_SKILL.md`',
-        '# `SKILL.md`',
-        1,
-    )
-
-    skill = skill.replace(
-        '[Chess Tutor Rules](../rules/CHESS_TUTOR_RULES.md) and [General Rules](../rules/GENERAL_RULES.md)',
-        '[Chess Tutor Rules](references/chess_tutor_rules.md)',
+        '../../../rules/knowledge/CHESS_RULES.md',
+        'references/chess_rules.md',
     )
 
     rules = rules.replace(
-        'This ruleset supplements [General Rules](GENERAL_RULES.md).',
+        'This ruleset supplements [General Rules](../GENERAL_RULES.md).',
         "This ruleset supplements the host's governing instructions.",
     ).replace(
-        '[Chess Tutor Skill](../skills/CHESS_TUTOR_SKILL.md)',
-        '[Chess Tutor Skill](../SKILL.md)',
+        '[Chess Skill](../../skills/knowledge/chess/SKILL.md)',
+        '[Chess Skill](../SKILL.md)',
     )
 
-    return {'SKILL.md': skill, 'references/chess_tutor_rules.md': rules,}
+    return {'SKILL.md': skill, 'references/chess_rules.md': rules,}
 
 def main() -> None:
     parser = argparse.ArgumentParser(description='Generate portable chess evidence instructions from canonical sources.',)
@@ -48,7 +41,7 @@ def main() -> None:
     parser.add_argument(
         '--destination',
         type=Path,
-        default=REPOSITORY_ROOT / '.agents' / 'skills' / 'chess_tutor',
+        default=REPOSITORY_ROOT / '.ai' / 'skills' / 'chess',
     )
 
     parser.add_argument(

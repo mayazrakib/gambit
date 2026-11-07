@@ -2,6 +2,7 @@
     "name": "gambit-workspace",
     "version": "0.3.0",
     "private": true,
+    "license": "MIT",
     "type": "module",
     "scripts": {
         "dev": "vite --host 127.0.0.1 --port 3031 --strictPort",

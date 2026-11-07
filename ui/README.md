@@ -1,5 +1,3 @@
-# `gambit-workspace`
-
 ![Version](https://img.shields.io/badge/Version-0.3.0-737373?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-737373?style=flat-square)
 ![Languages](https://img.shields.io/badge/Languages-TypeScript-737373?style=flat-square)
