@@ -25,7 +25,7 @@ vision = ["numpy>=2.3", "onnxruntime>=1.23", "pillow>=11.3"]
 dev = [
     "libcst>=1.9.0",
     "pytest>=8",
-    "pytest-asyncio>=1",
+    "pytest-asyncio>=1.4.1",
     "ruff>=0.12",
 ]
 
