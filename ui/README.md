@@ -1,11 +1,6 @@
-![Version](https://img.shields.io/badge/Version-0.3.0-737373?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-737373?style=flat-square)
-![Languages](https://img.shields.io/badge/Languages-TypeScript-737373?style=flat-square)
-![Frameworks](https://img.shields.io/badge/Frameworks-Vite%2C%20Chessboard-737373?style=flat-square)
-![Compatibility](https://img.shields.io/badge/Compatibility-Browser%20targets%3B%20not%20verified-737373?style=flat-square)
-![Build](https://img.shields.io/badge/Build-Not%20verified-737373?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-8%20Chromium%20passing-737373?style=flat-square)
-![Vulnerabilities](https://img.shields.io/badge/Vulnerabilities-0%20known%20dependency%20findings-737373?style=flat-square)
+[![CI](https://img.shields.io/github/actions/workflow/status/mayazrakib/gambit/ci.yml?branch=master&label=CI)](https://github.com/mayazrakib/gambit/actions/workflows/ci.yml?query=branch%3Amaster)
+[![Security](https://img.shields.io/github/actions/workflow/status/mayazrakib/gambit/security.yml?branch=master&label=security)](https://github.com/mayazrakib/gambit/actions/workflows/security.yml?query=branch%3Amaster)
+[![License](https://img.shields.io/github/license/mayazrakib/gambit)](https://github.com/mayazrakib/gambit/blob/master/LICENSE)
 
 ## 1. Introduction
 
