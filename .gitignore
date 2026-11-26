@@ -1,0 +1,19 @@
+# Environment And Build
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+*.sqlite3*
+.env
+.env.*
+!.env.example
+runtime/
+ui/node_modules/
+ui/test-results/
+ui/playwright-report/
+src/gambit/web/assets/
+
+# Build
+build/
